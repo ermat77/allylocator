@@ -66,7 +66,10 @@
 # Keep exceptions for stack traces
 -keepattributes Exceptions
 
+# Keep stackmap frames (required for Java 7+ bytecode verification)
+-keepattributes StackMapTable
+
 # Remove unused code
--dontpreverify
+# Note: -dontpreverify is removed - ProGuard will add stackmap frames for modern JVMs
 -repackageclasses ''
 -allowaccessmodification

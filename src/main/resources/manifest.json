@@ -1,0 +1,7 @@
+{
+    "Group": "com.allylocator",
+    "Name": "AllyLocator",
+    "Main": "com.allylocator.Main",
+    "Version": "0.0.2",
+    "IncludesAssetPack": true
+}
