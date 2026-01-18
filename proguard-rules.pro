@@ -1,7 +1,7 @@
-# ProGuard rules for AllyLocator plugin obfuscation
+# ProGuard rules for RealFaction plugin obfuscation
 
 # Keep the main plugin class and its public methods
--keep class com.allylocator.Main {
+-keep class com.realfaction.Main {
     public <init>(...);
     public void setup();
     public void start();
@@ -9,7 +9,7 @@
 }
 
 # Keep all classes in the plugin package (you can be more selective if needed)
--keep class com.allylocator.** { *; }
+-keep class com.realfaction.** { *; }
 
 # Keep classes that implement interfaces (needed for Hytale plugin system)
 -keep class * implements com.hypixel.hytale.server.core.plugin.JavaPlugin {
@@ -17,34 +17,36 @@
 }
 
 # Keep event listener methods (they're called via reflection)
--keepclassmembers class com.allylocator.listeners.** {
+-keepclassmembers class com.realfaction.** {
     public void *(com.hypixel.hytale.server.core.event.**);
 }
 
-# Keep marker provider implementation
--keep class com.allylocator.systems.PartyFilteredPlayerIconMarkerProvider {
-    public static final com.allylocator.systems.PartyFilteredPlayerIconMarkerProvider INSTANCE;
-    public void update(...);
+# Keep ECS systems (they're registered and called by Hytale)
+-keep class com.realfaction.faction.FactionSystem {
+    public <init>(...);
+    public void tick(...);
 }
 
-# Keep PartyService public methods (may be called via reflection)
--keep class com.allylocator.systems.PartyService {
+-keep class com.realfaction.systems.marker.FactionMarkerFilterSystem {
+    public <init>(...);
+    public void tick(...);
+}
+
+# Keep service classes that may be called via reflection
+-keep class com.realfaction.systems.marker.FactionMarkerFilterService {
     public static *;
 }
 
-# Keep DisableOtherPlayersMarkersSystem public methods
--keep class com.allylocator.systems.DisableOtherPlayersMarkersSystem {
-    public <init>(...);
-    public void applyFilter(...);
-    public void shutdown();
+# Keep manager classes
+-keep class com.realfaction.faction.FactionManager {
     public static *;
+    public <init>(...);
 }
 
-# Keep PlayerListener public methods
--keep class com.allylocator.listeners.PlayerListener {
+# Keep command classes
+-keep class com.realfaction.commands.** {
     public <init>(...);
-    public void onPlayerConnect(...);
-    public void onPlayerReady(...);
+    public * execute*(...);
 }
 
 # Obfuscation options (obfuscation is enabled by default in ProGuard)

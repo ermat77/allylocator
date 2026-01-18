@@ -11,6 +11,8 @@ gradle-app.setting
 # Compiled class files
 *.class
 
+sources
+
 # Log files
 *.log
 
@@ -80,6 +82,8 @@ bin/
 
 ### Hytale ###
 run/
+au/
+com/
 
 ### ProGuard Obfuscation ###
 proguard-mapping.txt

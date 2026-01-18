@@ -12,10 +12,19 @@ buildscript {
 plugins {
     id 'java'
     id 'org.jetbrains.gradle.plugin.idea-ext' version '1.3'
+    id 'com.github.johnrengelman.shadow' version '8.1.1'
 }
 
 ext {
     hytaleHome = "${System.getProperty("user.home")}/AppData/Roaming/Hytale"
+}
+
+// Add flatDir repository for local JARs so IntelliJ can better recognize them
+repositories {
+    mavenCentral()  // For LuckPerms API
+    flatDir {
+        dirs 'libs'
+    }
 }
 
 java {
@@ -33,17 +42,19 @@ javadoc {
 // compile against their code. This requires you to have Hytale installed using
 // the official launcher for now.
 dependencies {
-    implementation(files("$hytaleHome/install/$patchline/package/game/latest/Server/HytaleServer.jar"))
+    // Hytale Server JAR - validate file exists
+    def hytaleServerJar = file("$hytaleHome/install/$patchline/package/game/latest/Server/HytaleServer.jar")
+    if (!hytaleServerJar.exists()) {
+        throw new GradleException("HytaleServer.jar not found at: ${hytaleServerJar.absolutePath}")
+    }
+    implementation(files(hytaleServerJar))
     
-    // SimpleClaims plugin dependency (implementation = available at compile and runtime)
-    // Place the SimpleClaims JAR file in the 'libs' folder in your project root
-    // Note: This won't bundle the JAR since Hytale loads plugins separately at runtime
-    implementation(files("$projectDir/libs/SimpleClaims-1.0.9.jar"))
+    // LuckPerms API - compileOnly since it's provided at runtime by the LuckPerms plugin
+    // Using a version that should be compatible with most LuckPerms installations
+    compileOnly("net.luckperms:api:5.4")
     
-    // Hyfaction plugin dependency (implementation = available at compile and runtime)
-    // Place the Hyfaction JAR file in the 'libs' folder in your project root
-    // Note: This won't bundle the JAR since Hytale loads plugins separately at runtime
-    implementation(files("$projectDir/libs/Hyfaction-1.0.140.jar"))
+    // HyUI - implementation so it gets bundled into the final JAR
+    implementation(files('libs/HyUI-0.3.0-all.jar'))
 }
 
 // Create the working directory to run the server if it does not already exist.
@@ -73,6 +84,64 @@ tasks.named('processResources') {
     dependsOn 'updatePluginManifest'
 }
 
+// Include all resources (including UI files) in the JAR
+tasks.jar {
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from(sourceSets.main.resources) {
+        include '**/*'
+    }
+    // Set classifier so shadowJar becomes the main artifact
+    archiveClassifier.set('original')
+}
+
+// Shadow JAR configuration - bundles all dependencies including HyUI
+// Note: Using a workaround for Windows compatibility
+shadowJar {
+    archiveClassifier.set('')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    
+    // Relocate HyUI classes to avoid conflicts (optional but recommended)
+    // relocate 'au.ellie.hyui', 'com.realfaction.libs.hyui'
+    
+    // Merge service files if needed
+    mergeServiceFiles()
+    
+    // Configure manifest
+    manifest {
+        inheritFrom project.tasks.jar.manifest
+    }
+    
+    // Workaround for Windows META-INF issue: transform META-INF files
+    transform(com.github.jengelman.gradle.plugins.shadow.transformers.PropertiesFileTransformer) {
+        paths = ['META-INF/spring.handlers', 'META-INF/spring.schemas']
+        mergeStrategy = "append"
+    }
+}
+
+// Alternative: Create a fat JAR task that manually merges dependencies
+tasks.register('fatJar', Jar) {
+    archiveClassifier.set('')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    
+    from sourceSets.main.output
+    from sourceSets.main.resources
+    
+    // Include HyUI classes
+    from(zipTree('libs/HyUI-0.3.0-all.jar')) {
+        exclude 'META-INF/**'
+    }
+    
+    // Include manifest from main jar
+    manifest {
+        from jar.manifest
+    }
+}
+
+// Make fatJar the default build artifact (works on Windows, includes HyUI)
+// shadowJar is available as an alternative but has Windows compatibility issues
+tasks.build.dependsOn fatJar
+tasks.assemble.dependsOn fatJar
+
 // Obfuscation task using ProGuard (7.8+ supports Java 25)
 tasks.register('obfuscate', proguard.gradle.ProGuardTask) {
     dependsOn jar
@@ -81,15 +150,13 @@ tasks.register('obfuscate', proguard.gradle.ProGuardTask) {
     injars jar.archiveFile
     
     // Output JAR (obfuscated)
-    outjars("${buildDir}/libs/${project.name}-${version}-obfuscated.jar")
+    outjars("${buildDir}/libs/RealFaction-${version}-obfuscated.jar")
     
     // ProGuard configuration file
     configuration('proguard-rules.pro')
     
     // Library JARs (don't obfuscate these, just reference them)
     libraryjars(files("$hytaleHome/install/$patchline/package/game/latest/Server/HytaleServer.jar"))
-    libraryjars(files("$projectDir/libs/SimpleClaims-1.0.9.jar"))
-    libraryjars(files("$projectDir/libs/Hyfaction-1.0.140.jar"))
     
     // Java runtime - use Java 25 compatible path
     def javaHome = System.getProperty('java.home')
@@ -108,6 +175,14 @@ tasks.register('obfuscate', proguard.gradle.ProGuardTask) {
     
     // Print mapping file for debugging (optional - you can remove this)
     printmapping("${buildDir}/proguard-mapping.txt")
+}
+
+// Explicitly configure IntelliJ IDEA to recognize file-based dependencies
+idea {
+    module {
+        downloadJavadoc = false
+        downloadSources = false
+    }
 }
 
 // Creates a run configuration in IDEA that will run the Hytale server with

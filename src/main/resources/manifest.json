@@ -1,7 +1,7 @@
 {
-    "Group": "com.allylocator",
-    "Name": "AllyLocator",
-    "Main": "com.allylocator.Main",
+    "Group": "com.realfaction",
+    "Name": "RealFaction",
+    "Main": "com.realfaction.Main",
     "Version": "0.0.2",
     "IncludesAssetPack": true
 }
