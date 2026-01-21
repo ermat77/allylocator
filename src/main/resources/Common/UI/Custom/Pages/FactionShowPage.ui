@@ -1,249 +1,269 @@
 $C = "../Common.ui";
 
-$C.@PageOverlay {
+Group {
+  Anchor: (Width: 700, Height: 600);
+  Background: #141c26(0.98);
+  LayoutMode: Top;
+  Padding: (Full: 20);
 
-  $C.@DecoratedContainer {
-    Anchor: (Width: 600, Height: 500);
+  Label {
+    Text: "Faction";
+    Anchor: (Height: 45);
+    Style: (
+      FontSize: 26,
+      TextColor: #ffffff,
+      HorizontalAlignment: Center,
+      RenderBold: true
+    );
+  }
 
-    #Title {
-      Group {
-        $C.@Title #TitleText {
-          @Text = "Faction Information";
-        }
-      }
-    }
+  Group {
+    Anchor: (Height: 1);
+    Background: #2b3542;
+  }
 
-    #Content {
+  Group { Anchor: (Height: 16); }
+
+  Group {
+    LayoutMode: Top;
+    FlexWeight: 1;
+
+    Group #factionInfoSection {
       LayoutMode: Top;
+      Visible: true;
 
-      // Faction Info Panel (shown when player has a faction)
-      Group #factionInfoPanel {
-        LayoutMode: Top;
-        Padding: (Left: 20, Right: 20, Top: 20, Bottom: 20);
-        Visible: false;
+      Label #factionNameLabel {
+        Text: "";
+        Style: (
+          FontSize: 24,
+          TextColor: #ffffff,
+          RenderBold: true
+        );
+        Anchor: (Height: 50);
+      }
 
-        // Basic Info Section (visible for all roles)
-        Group #basicInfoSection {
+      Label #memberCountLabel {
+        Text: "";
+        Style: (
+          FontSize: 16,
+          TextColor: #96a9be
+        );
+        Anchor: (Height: 30);
+      }
+
+      Group { Anchor: (Height: 10); }
+
+      // Horizontal container for members and pending invites panels
+      Group {
+        LayoutMode: Right;
+        FlexWeight: 1;
+
+        // Members panel (left, 2/3 width)
+        Group {
           LayoutMode: Top;
-          Anchor: (Bottom: 10);
+          FlexWeight: 2;
 
-          Label #factionNameLabel {
-            Text: "Faction Name:";
-            Style: (
-              FontSize: 18,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Bottom: 5);
-          }
-
-          Label #factionName {
-            Text: "Loading...";
-            Style: (
-              FontSize: 20,
-              TextColor: #FFFFFF,
-              RenderBold: true
-            );
-            Anchor: (Bottom: 10);
-          }
-
-          Label #memberCountLabel {
+          Label #membersHeaderLabel {
             Text: "Members:";
             Style: (
               FontSize: 18,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Bottom: 5);
-          }
-
-          Label #memberCount {
-            Text: "0";
-            Style: (
-              FontSize: 20,
-              TextColor: #FFFFFF
-            );
-            Anchor: (Bottom: 10);
-          }
-        }
-
-        // Owner-specific action buttons
-        Group #ownerButtons {
-          LayoutMode: Top;
-          Anchor: (Bottom: 10);
-          Visible: false;
-        }
-
-        // General/Member view (basic info with member list)
-        Group #memberView {
-          LayoutMode: Top;
-          Anchor: (Bottom: 10);
-          Visible: false;
-
-          Label #membersListLabelMember {
-            Text: "Faction Members:";
-            Style: (
-              FontSize: 16,
-              TextColor: #CCCCCC,
+              TextColor: #96a9be,
               RenderBold: true
             );
-            Anchor: (Bottom: 10);
+            Anchor: (Height: 30);
           }
 
-          // Scrollable member list container
-          Group #membersListContainerMember {
-            LayoutMode: Top;
+          Label #noMembersLabel {
+            Text: "No members";
+            Style: (
+              FontSize: 14,
+              TextColor: #96a9be
+            );
+            Visible: false;
+            Anchor: (Height: 30);
+          }
+
+          // Member list container - dynamically populated via Java
+          Group #MemberList {
+            LayoutMode: TopScrolling;
+            ScrollbarStyle: $C.@DefaultScrollbarStyle;
             FlexWeight: 1;
-            Anchor: (Bottom: 10);
-
-            Label #membersListPlaceholderMember {
-              Text: "Loading members...";
-              Style: (
-                FontSize: 14,
-                TextColor: #AAAAAA
-              );
-            }
           }
         }
-      }
 
-      // Create Faction Panel (shown when player doesn't have a faction)
-      Group #createFactionPanel {
-        LayoutMode: Top;
-        Padding: (Left: 20, Right: 20, Top: 20, Bottom: 20);
-        Visible: false;
+        Group { Anchor: (Width: 16); }
 
-        Label #createLabel {
-          Text: "You are not in a faction.";
-          Style: (
-            FontSize: 18,
-            TextColor: #CCCCCC,
-            HorizontalAlignment: Center
-          );
-          Anchor: (Bottom: 10);
-        }
-
-        Label #createSubLabel {
-          Text: "Create a new faction:";
-          Style: (
-            FontSize: 16,
-            TextColor: #AAAAAA,
-            HorizontalAlignment: Center
-          );
-          Anchor: (Bottom: 10);
-        }
-
-        Label #factionNameInputLabel {
-          Text: "Faction Name:";
-          Style: (
-            FontSize: 16,
-            TextColor: #CCCCCC
-          );
-          Anchor: (Bottom: 5);
-        }
-
-        $C.@TextField #factionNameInput {
-          Anchor: (Bottom: 10, Height: 40);
-          Style: (
-            FontSize: 14,
-            TextColor: #ffffff(0.9)
-          );
+        // Pending invites panel (right, 1/3 width, owner only)
+        Group #pendingInvitesSection {
+          LayoutMode: Top;
           FlexWeight: 1;
-        }
+          Visible: false;
 
-        $C.@TextButton #createButton {
-          Text: "Create Faction";
-          Anchor: (Bottom: 10);
-          Style: (
-            Default: (
-              Background: #4CAF50(0.8),
-              LabelStyle: (
-                FontSize: 18,
-                TextColor: #FFFFFF,
-                HorizontalAlignment: Center
-              )
-            )
-          );
-        }
-      }
+          Label #pendingInvitesHeaderLabel {
+            Text: "Pending Invites:";
+            Style: (
+              FontSize: 18,
+              TextColor: #96a9be,
+              RenderBold: true
+            );
+            Anchor: (Height: 30);
+          }
 
-      Label { FlexWeight: 1; }
+          Label #noPendingInvitesLabel {
+            Text: "No pending invites";
+            Style: (
+              FontSize: 14,
+              TextColor: #96a9be
+            );
+            Visible: false;
+            Anchor: (Height: 30);
+          }
 
-      // Action buttons at the bottom (beautiful design)
-      Group #actionButtons {
-        LayoutMode: Right;
-        Anchor: (Bottom: 15);
-        Padding: (Left: 10, Right: 10, Top: 10, Bottom: 10);
-        Visible: false; // Controlled by Java - only visible when player has faction
-
-        $C.@TextButton #settingsButton {
-          Text: "⚙ Settings";
-          Padding: (Left: 20, Right: 20, Top: 12, Bottom: 12);
-          Anchor: (Right: 10);
-          Visible: false; // Controlled by Java - only visible for owners
-          Background: (Color: #4CAF50(0.9));
-          Style: TextButtonStyle(
-            Default: (
-              LabelStyle: (
-                FontSize: 16,
-                TextColor: #FFFFFF,
-                HorizontalAlignment: Center,
-                RenderBold: true
-              )
-            ),
-            Hovered: (
-              Background: (Color: #45A049(0.95)),
-              LabelStyle: (
-                FontSize: 16,
-                TextColor: #FFFFFF,
-                HorizontalAlignment: Center,
-                RenderBold: true
-              )
-            ),
-            Sounds: $C.@ButtonSounds
-          );
-        }
-
-        $C.@TextButton #membersButton {
-          Text: "👥 Members";
-          Padding: (Left: 20, Right: 20, Top: 12, Bottom: 12);
-          Anchor: (Right: 10);
-          Visible: false; // Controlled by Java - visible when player has faction
-          Background: (Color: #2196F3(0.9));
-          Style: TextButtonStyle(
-            Default: (
-              LabelStyle: (
-                FontSize: 16,
-                TextColor: #FFFFFF,
-                HorizontalAlignment: Center,
-                RenderBold: true
-              )
-            ),
-            Hovered: (
-              Background: (Color: #1976D2(0.95)),
-              LabelStyle: (
-                FontSize: 16,
-                TextColor: #FFFFFF,
-                HorizontalAlignment: Center,
-                RenderBold: true
-              )
-            ),
-            Sounds: $C.@ButtonSounds
-          );
-        }
-      }
-
-      // Close button (always visible)
-      Group #InteractionButtons {
-        LayoutMode: Right;
-        Anchor: (Bottom: 10);
-
-        $C.@CancelTextButton #closeButton {
-          Text: "Close";
-          Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
-          Anchor: (Right: 10);
+          Group #PendingInvitesList {
+            LayoutMode: TopScrolling;
+            ScrollbarStyle: $C.@DefaultScrollbarStyle;
+            FlexWeight: 1;
+          }
         }
       }
     }
+
+    // Pending invites section (shown when player has invites but no faction)
+    Group #pendingInvitesPageSection {
+      LayoutMode: Top;
+      Visible: false;
+
+      Label #headerLabel {
+        Text: "You have been invited to join factions:";
+        Style: (
+          FontSize: 16,
+          TextColor: #96a9be
+        );
+        Anchor: (Height: 30);
+      }
+
+      Group { Anchor: (Height: 10); }
+
+      Group #InvitesList {
+        LayoutMode: Top;
+        FlexWeight: 1;
+
+        Label #noInvitesLabel {
+          Text: "No pending invites";
+          Style: (
+            FontSize: 14,
+            TextColor: #96a9be
+          );
+          Visible: false;
+        }
+      }
+
+      Group { FlexWeight: 1; }
+    }
+
+    // Create faction section (shown when player has no faction and no invites, and has permission)
+    Group #createFactionSection {
+      LayoutMode: Top;
+      Visible: false;
+
+      Label #instructionsLabel {
+        Text: "Enter a name for your new faction:";
+        Style: (
+          FontSize: 16,
+          TextColor: #96a9be
+        );
+        Anchor: (Height: 30);
+      }
+
+      Group { Anchor: (Height: 12); }
+
+      Group {
+        LayoutMode: Right;
+        Anchor: (Height: 44);
+        Padding: (Full: 8);
+
+        $C.@TextField #FactionNameInput {
+          Anchor: (Height: 44);
+          FlexWeight: 1;
+          PlaceholderText: "Enter faction name...";
+        }
+
+        Group { Anchor: (Width: 12); }
+
+        $C.@TextButton #createFactionButtonInSection {
+          Text: "CREATE FACTION";
+          Anchor: (Width: 200, Height: 44);
+        }
+      }
+
+      Group { FlexWeight: 1; }
+    }
+
+    // No permission section (shown when player has no faction, no invites, and no permission)
+    Group #noPermissionSection {
+      LayoutMode: Top;
+      Visible: false;
+
+      Label #noPermissionLabel {
+        Text: "You don't have permission to create or join a faction";
+        Style: (
+          FontSize: 16,
+          TextColor: #ff6b6b,
+          HorizontalAlignment: Center
+        );
+        Anchor: (Height: 30);
+      }
+
+      Group { FlexWeight: 1; }
+    }
+  }
+
+  Group {
+    Anchor: (Height: 1);
+    Background: #2b3542(0.5);
+  }
+
+  Group { Anchor: (Height: 16); }
+
+  Group #ActionButtons {
+    LayoutMode: Right;
+    Anchor: (Height: 44);
+
+    $C.@TextButton #diplomacyButton {
+      Text: "DIPLOMACY";
+      Anchor: (Width: 160, Height: 40);
+      Visible: false;
+    }
+
+    Group { Anchor: (Width: 16); }
+
+    $C.@TextButton #claimButton {
+      Text: "CLAIM";
+      Anchor: (Width: 140, Height: 40);
+      Visible: false;
+    }
+
+    Group { Anchor: (Width: 16); }
+
+    $C.@TextButton #createFactionButton {
+      Text: "CREATE FACTION";
+      Anchor: (Width: 150, Height: 40);
+      Visible: false;
+    }
+
+    Group { FlexWeight: 1; }
+
+    $C.@TextButton #settingsButton {
+      Text: "SETTINGS";
+      Anchor: (Width: 140, Height: 40);
+      Visible: false;
+    }
+
+    Group { Anchor: (Width: 16); }
+
+    $C.@CancelTextButton #closeButton {
+      Text: "CLOSE";
+      Anchor: (Width: 110, Height: 40);
+    }
   }
 }
-
-$C.@BackButton {}

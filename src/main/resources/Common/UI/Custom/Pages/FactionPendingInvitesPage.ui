@@ -1,0 +1,72 @@
+$C = "../Common.ui";
+
+$C.@PageOverlay {
+
+  $C.@DecoratedContainer {
+    Anchor: (Width: 600, Height: 500);
+
+    #Title {
+      Group {
+        $C.@Title #TitleText {
+          @Text = "Pending Invites";
+        }
+      }
+    }
+
+    #Content {
+      LayoutMode: Top;
+      Padding: (Left: 20, Right: 20, Top: 20, Bottom: 20);
+
+      Label #headerLabel {
+        Text: "You have been invited to join factions:";
+        Style: (
+          FontSize: 16,
+          TextColor: #CCCCCC
+        );
+        Anchor: (Bottom: 10);
+      }
+
+      Group #spacer1 {
+        Anchor: (Height: 10);
+      }
+
+      Group #InvitesList {
+        LayoutMode: Top;
+        FlexWeight: 1;
+        Anchor: (Bottom: 10);
+
+        Label #noInvitesLabel {
+          Text: "No pending invites";
+          Style: (
+            FontSize: 14,
+            TextColor: #AAAAAA
+          );
+          Visible: false;
+        }
+      }
+
+      Group #spacer2 {
+        FlexWeight: 1;
+      }
+
+      Group #ActionButtons {
+        LayoutMode: Right;
+        Anchor: (Bottom: 10);
+
+        $C.@TextButton #createFactionButton {
+          Text: "Create Faction";
+          Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
+          Visible: false;
+        }
+
+        $C.@CancelTextButton #closeButton {
+          Text: "Close";
+          Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
+          Anchor: (Right: 10);
+        }
+      }
+    }
+  }
+}
+
+$C.@BackButton {}

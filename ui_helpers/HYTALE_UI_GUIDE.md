@@ -169,7 +169,7 @@ group {
     text: "Enter Your Name"
   }
   
-  $C.addTextField #nameInput {
+  $C.@TextField #nameInput {
     anchor: 0 40
     placeholder: "Enter your name"
   }
@@ -183,7 +183,7 @@ group {
 
 **Key Points:**
 - Import `common.UI` for custom components like `textField`
-- Custom components use prefix: `$C.addTextField`
+- Custom components use prefix: `$C.@TextField`
 - Built-in components (like `textButton`) don't need prefix
 - IDs are set with `#` prefix: `#nameInput`, `#greetButton`
 
@@ -442,6 +442,9 @@ Styles can be reused across multiple elements and potentially imported from othe
 - **`command.set(elementId, property, value)`**: Update UI element property
 - **`command.addEventBinding(elementId, eventData)`**: Bind UI element to event
 - **`handleDataEvent(store, data)`**: Handle incoming events (override in InteractiveCustomUIPage)
+- **`sendUpdate(commandBuilder, eventBuilder, clear)`**: Refresh the UI page (handles threading internally)
+  - Use `clear=true` to properly reset event bindings
+  - Must rebuild page (call `build()`) before calling this
 - **`player.getPageManager().openCustomPage(store, page)`**: Open a UI page
 - **`player.getPageManager().setPage(Page.NONE)`**: Close the current page
 
@@ -452,6 +455,8 @@ Styles can be reused across multiple elements and potentially imported from othe
 3. **ID Connection**: Java finds UI elements by ID (e.g., `#title`, `#nameInput`)
 4. **@ Prefix**: Binds UI values to event data fields
 5. **Codec Required**: All event data classes need a codec for serialization
+6. **UI Refresh Pattern**: Update data → Rebuild page → `sendUpdate()` with `clear=true` → Event bindings recreated
+7. **Async Operations**: Make blocking I/O async, refresh UI immediately after data changes (not after async completes)
 
 ## Best Practices
 
@@ -463,6 +468,149 @@ Styles can be reused across multiple elements and potentially imported from othe
 6. **Event Data**: Keep event data classes simple with public fields (or test getters/setters)
 7. **Lifetime**: Use appropriate `CustomPageLifetime` for your use case
 8. **Error Handling**: Check for null/empty values in event handlers
+9. **UI Refresh**: Always use `clear=true` when refreshing pages to reset event bindings
+10. **Threading**: Don't wrap `sendUpdate()` in `world.execute()` - it handles threading internally
+11. **Event Bindings**: Always recreate all event bindings in `build()` method
+12. **Async Operations**: Refresh UI immediately after data changes, make blocking I/O async in background
+
+## UI Refresh and Event Binding Patterns
+
+### Refreshing Pages After Data Changes
+
+When you update data and need to refresh the UI to show changes and recreate event bindings, use the `sendUpdate()` method from `InteractiveCustomUIPage`.
+
+#### Basic Refresh Pattern
+
+```java
+private void refreshPage(Ref<EntityStore> ref, Store<EntityStore> store) {
+    if (!ref.isValid()) {
+        return;
+    }
+    
+    // Rebuild the page with updated data
+    UICommandBuilder commandBuilder = new UICommandBuilder();
+    UIEventBuilder eventBuilder = new UIEventBuilder();
+    build(ref, commandBuilder, eventBuilder, store);
+    
+    // Send update to refresh the UI
+    // Use clear=true to properly reset event bindings
+    sendUpdate(commandBuilder, eventBuilder, true);
+}
+```
+
+**Key Points:**
+- `sendUpdate()` already handles world thread execution internally - don't wrap it in `world.execute()`
+- Use `clear=true` to properly reset event bindings before applying new ones
+- Always rebuild the page (call `build()`) before refreshing to ensure fresh data and event bindings
+
+#### Threading Best Practices
+
+**❌ Wrong - Double-wrapping:**
+```java
+world.execute(() -> {
+    build(ref, commandBuilder, eventBuilder, store);
+    sendUpdate(commandBuilder, eventBuilder, false); // This also calls world.execute() internally
+});
+```
+
+**✅ Correct - Let sendUpdate handle threading:**
+```java
+build(ref, commandBuilder, eventBuilder, store);
+sendUpdate(commandBuilder, eventBuilder, true); // Handles world.execute() internally
+```
+
+### Async Operations and UI Updates
+
+When performing blocking operations (like file I/O), make them async and refresh the UI immediately after updating data, not after the async operation completes.
+
+#### Pattern for Async File Operations
+
+```java
+// Update data immediately
+faction.setName(newName);
+player.sendMessage("Faction renamed to '" + newName + "'");
+
+// Refresh UI immediately to update display and recreate event bindings
+refreshPage(ref, store);
+
+// Save asynchronously in background (don't wait for completion)
+EntityStore entityStore = (EntityStore) store.getExternalData();
+World world = entityStore.getWorld();
+CompletableFuture.runAsync(() -> {
+    factionManager.saveFactions();
+}, world);
+```
+
+**Why this works:**
+- UI refreshes immediately with updated data and fresh event bindings
+- User can continue interacting with the UI without waiting
+- File I/O happens in background without blocking
+- Event bindings are recreated on each refresh, preventing them from becoming stale
+
+#### ❌ Anti-Pattern: Refreshing After Async Completion
+
+```java
+// DON'T do this - event bindings may be lost
+CompletableFuture.runAsync(() -> {
+    factionManager.saveFactions();
+}, world).thenRun(() -> {
+    refreshPage(ref, store); // Too late - bindings may be stale
+});
+```
+
+**Problem:** By the time the async operation completes, the UI state may have changed and event bindings may not be properly recreated.
+
+### Event Binding Recreation
+
+Event bindings must be recreated every time you refresh the page. The `build()` method should always set up all event bindings:
+
+```java
+@Override
+public void build(Ref<EntityStore> ref, UICommandBuilder commandBuilder, 
+                  UIEventBuilder eventBuilder, Store<EntityStore> store) {
+    commandBuilder.append("Pages/MyPage.ui");
+    
+    // Always recreate ALL event bindings
+    eventBuilder.addEventBinding(
+        CustomUIEventBindingType.Activating,
+        "#myButton",
+        new EventData().append("Action", "doSomething")
+    );
+    
+    // ... other bindings
+}
+```
+
+**Critical:** If you don't recreate event bindings in `build()`, they will be lost after the first refresh, making the UI unresponsive to further interactions.
+
+### Common Issues and Solutions
+
+#### Issue: UI works first time, then stops responding
+
+**Cause:** Event bindings not being recreated on refresh, or using `clear=false` when `clear=true` is needed.
+
+**Solution:**
+1. Ensure `build()` method recreates all event bindings
+2. Use `clear=true` in `sendUpdate()` to properly reset bindings
+3. Refresh immediately after data changes, not after async operations complete
+
+#### Issue: UI freezes with "Loading..." message
+
+**Cause:** Blocking operations on UI thread, or not refreshing UI after operations.
+
+**Solution:**
+1. Make blocking operations async using `CompletableFuture.runAsync()`
+2. Always refresh UI after operations (success and error paths)
+3. Use world executor for async operations: `CompletableFuture.runAsync(() -> {...}, world)`
+
+#### Issue: Event bindings lost after first interaction
+
+**Cause:** Not using `clear=true` or not rebuilding event bindings in `build()`.
+
+**Solution:**
+1. Use `sendUpdate(commandBuilder, eventBuilder, true)` with `clear=true`
+2. Ensure `build()` method always sets up all event bindings
+3. Refresh immediately after data changes
 
 ## Notes and Limitations
 

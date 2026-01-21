@@ -1,0 +1,6 @@
+{
+  "Debug": false,
+  "VerboseDebug": false,
+  "PermissionsMode": "factioncore",
+  "MaxFactionNameLength": 20
+}

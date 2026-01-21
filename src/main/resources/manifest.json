@@ -1,7 +1,7 @@
 {
-    "Group": "com.realfaction",
-    "Name": "RealFaction",
-    "Main": "com.realfaction.Main",
+    "Group": "com.factioncore",
+    "Name": "FactionCore",
+    "Main": "com.factioncore.Main",
     "Version": "0.0.2",
     "IncludesAssetPack": true
 }

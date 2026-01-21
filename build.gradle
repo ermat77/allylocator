@@ -19,6 +19,12 @@ ext {
     hytaleHome = "${System.getProperty("user.home")}/AppData/Roaming/Hytale"
 }
 
+// Configuration for shadow bundle dependencies
+configurations {
+    shadowBundle
+    implementation.extendsFrom(shadowBundle)
+}
+
 // Add flatDir repository for local JARs so IntelliJ can better recognize them
 repositories {
     mavenCentral()  // For LuckPerms API
@@ -53,8 +59,8 @@ dependencies {
     // Using a version that should be compatible with most LuckPerms installations
     compileOnly("net.luckperms:api:5.4")
     
-    // HyUI - implementation so it gets bundled into the final JAR
-    implementation(files('libs/HyUI-0.3.0-all.jar'))
+    // SQLite JDBC driver - bundled with plugin
+    shadowBundle 'org.xerial:sqlite-jdbc:3.45.1.0'
 }
 
 // Create the working directory to run the server if it does not already exist.
@@ -94,14 +100,14 @@ tasks.jar {
     archiveClassifier.set('original')
 }
 
-// Shadow JAR configuration - bundles all dependencies including HyUI
+// Shadow JAR configuration - bundles all dependencies
 // Note: Using a workaround for Windows compatibility
 shadowJar {
     archiveClassifier.set('')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
     
-    // Relocate HyUI classes to avoid conflicts (optional but recommended)
-    // relocate 'au.ellie.hyui', 'com.realfaction.libs.hyui'
+    // Include shadowBundle dependencies
+    configurations = [project.configurations.shadowBundle]
     
     // Merge service files if needed
     mergeServiceFiles()
@@ -118,7 +124,7 @@ shadowJar {
     }
 }
 
-// Alternative: Create a fat JAR task that manually merges dependencies
+// Create a fat JAR task that manually merges dependencies
 tasks.register('fatJar', Jar) {
     archiveClassifier.set('')
     duplicatesStrategy = DuplicatesStrategy.EXCLUDE
@@ -126,18 +132,13 @@ tasks.register('fatJar', Jar) {
     from sourceSets.main.output
     from sourceSets.main.resources
     
-    // Include HyUI classes
-    from(zipTree('libs/HyUI-0.3.0-all.jar')) {
-        exclude 'META-INF/**'
-    }
-    
     // Include manifest from main jar
     manifest {
         from jar.manifest
     }
 }
 
-// Make fatJar the default build artifact (works on Windows, includes HyUI)
+// Make fatJar the default build artifact (works on Windows)
 // shadowJar is available as an alternative but has Windows compatibility issues
 tasks.build.dependsOn fatJar
 tasks.assemble.dependsOn fatJar
@@ -150,7 +151,7 @@ tasks.register('obfuscate', proguard.gradle.ProGuardTask) {
     injars jar.archiveFile
     
     // Output JAR (obfuscated)
-    outjars("${buildDir}/libs/RealFaction-${version}-obfuscated.jar")
+    outjars("${buildDir}/libs/FactionCore-${version}-obfuscated.jar")
     
     // ProGuard configuration file
     configuration('proguard-rules.pro')

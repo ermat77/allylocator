@@ -1,7 +1,7 @@
-# ProGuard rules for RealFaction plugin obfuscation
+# ProGuard rules for FactionCore plugin obfuscation
 
 # Keep the main plugin class and its public methods
--keep class com.realfaction.Main {
+-keep class com.factioncore.Main {
     public <init>(...);
     public void setup();
     public void start();
@@ -9,7 +9,7 @@
 }
 
 # Keep all classes in the plugin package (you can be more selective if needed)
--keep class com.realfaction.** { *; }
+-keep class com.factioncore.** { *; }
 
 # Keep classes that implement interfaces (needed for Hytale plugin system)
 -keep class * implements com.hypixel.hytale.server.core.plugin.JavaPlugin {
@@ -17,34 +17,34 @@
 }
 
 # Keep event listener methods (they're called via reflection)
--keepclassmembers class com.realfaction.** {
+-keepclassmembers class com.factioncore.** {
     public void *(com.hypixel.hytale.server.core.event.**);
 }
 
 # Keep ECS systems (they're registered and called by Hytale)
--keep class com.realfaction.faction.FactionSystem {
+-keep class com.factioncore.faction.FactionSystem {
     public <init>(...);
     public void tick(...);
 }
 
--keep class com.realfaction.systems.marker.FactionMarkerFilterSystem {
+-keep class com.factioncore.systems.marker.FactionMarkerFilterSystem {
     public <init>(...);
     public void tick(...);
 }
 
 # Keep service classes that may be called via reflection
--keep class com.realfaction.systems.marker.FactionMarkerFilterService {
+-keep class com.factioncore.systems.marker.FactionMarkerFilterService {
     public static *;
 }
 
 # Keep manager classes
--keep class com.realfaction.faction.FactionManager {
+-keep class com.factioncore.faction.FactionManager {
     public static *;
     public <init>(...);
 }
 
 # Keep command classes
--keep class com.realfaction.commands.** {
+-keep class com.factioncore.commands.** {
     public <init>(...);
     public * execute*(...);
 }

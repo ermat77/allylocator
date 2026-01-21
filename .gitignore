@@ -83,7 +83,7 @@ bin/
 ### Hytale ###
 run/
 au/
-com/
+/com/
 
 ### ProGuard Obfuscation ###
 proguard-mapping.txt

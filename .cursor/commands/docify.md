@@ -1,1 +1,1 @@
-Analyze the RealFaction codebase and update REALFACTION_TECHNICAL_DOCS.md with current architecture, best practices, and implementation details based on what we discovered during our chat.
+Based on what we modified update TECHNICAL_DOCS.md with current architecture, best practices, and implementation details based on what we discovered during our chat.
