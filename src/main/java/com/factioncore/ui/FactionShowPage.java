@@ -12,12 +12,15 @@ import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.invite.PendingInvite;
 import com.factioncore.ui.events.FactionShowPageEventData;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.I18n;
+import com.factioncore.util.PlayerUtils;
 import com.factioncore.util.PermissionUtil;
 import java.awt.Color;
 import java.util.ArrayList;
@@ -41,9 +44,24 @@ import javax.annotation.Nonnull;
  *   - When the event fires, the current input value is automatically included
  */
 public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEventData> {
-    
+
+    /** When non-null, show this faction as admin (full owner UI and actions). */
+    private final UUID adminViewFactionId;
+
     public FactionShowPage(@Nonnull PlayerRef playerRef) {
+        this(playerRef, null);
+    }
+
+    /**
+     * Opens the faction show UI for a specific faction as superadmin (full owner capabilities).
+     * When adminViewFactionId is non-null, that faction is shown and the viewer is treated as owner.
+     *
+     * @param playerRef         The player viewing the page
+     * @param adminViewFactionId The faction to manage, or null for normal (player's own faction) view
+     */
+    public FactionShowPage(@Nonnull PlayerRef playerRef, UUID adminViewFactionId) {
         super(playerRef, CustomPageLifetime.CanDismissOrCloseThroughInteraction, FactionShowPageEventData.CODEC);
+        this.adminViewFactionId = adminViewFactionId;
     }
     
     @Override
@@ -58,6 +76,20 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         // Load the faction UI file first (always needed)
         commandBuilder.append("Pages/FactionShowPage.ui");
         
+        // Set static UI text from I18n (so title, headers, and buttons are translated)
+        commandBuilder.set("#factionTitleLabel.Text", I18n.get("ui.faction_show.title"));
+        commandBuilder.set("#membersHeaderLabel.Text", I18n.get("ui.faction_show.members"));
+        commandBuilder.set("#noMembersLabel.Text", I18n.get("ui.faction_show.no_members"));
+        commandBuilder.set("#pendingInvitesHeaderLabel.Text", I18n.get("ui.faction_show.pending_invites"));
+        commandBuilder.set("#noPendingInvitesLabel.Text", I18n.get("ui.faction_show.no_pending_invites"));
+        commandBuilder.set("#diplomacyButton.Text", I18n.get("ui.faction_show.button_diplomacy"));
+        commandBuilder.set("#claimButton.Text", I18n.get("ui.faction_show.button_claim"));
+        commandBuilder.set("#createFactionButton.Text", I18n.get("ui.faction_show.button_create_faction"));
+        commandBuilder.set("#createFactionButtonInSection.Text", I18n.get("ui.faction_show.button_create_faction"));
+        commandBuilder.set("#settingsButton.Text", I18n.get("ui.faction_show.button_settings"));
+        commandBuilder.set("#closeButton.Text", I18n.get("ui.faction_show.button_close"));
+        commandBuilder.set("#noPermissionSection #noPermissionLabel.Text", I18n.get("ui.faction_show.no_permission_create_join"));
+        
         // Check permissions first
         boolean canShow = PermissionUtil.canShowFaction(playerUuid);
         boolean canCreate = PermissionUtil.canCreateFaction(playerUuid);
@@ -68,11 +100,22 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
             return;
         }
         
-        // Check faction state
+        // Check faction state (admin mode: show target faction; normal: player's faction)
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
-        List<PendingInvite> pendingInvites = factionManager.getPendingInvitesForPlayer(playerUuid);
-        
+        FactionInfo faction = adminViewFactionId != null
+            ? factionManager.getFactionById(adminViewFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
+        List<PendingInvite> pendingInvites = faction != null && adminViewFactionId == null
+            ? factionManager.getPendingInvitesForPlayer(playerUuid)
+            : (faction != null ? factionManager.getPendingInvitesForFaction(faction.getId()) : List.of());
+
+        // Admin mode with invalid faction
+        if (adminViewFactionId != null && faction == null) {
+            buildNoPermissionState(commandBuilder, eventBuilder);
+            commandBuilder.set("#noPermissionSection #noPermissionLabel.Text", I18n.get("ui.faction_show.not_found"));
+            return;
+        }
+
         // Decision tree: faction → invites → create → no permission
         if (faction != null) {
             // Player has a faction - show faction info
@@ -106,7 +149,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         // Set faction name and member count
         ConfigUtil.debug("FactionShowPage: Setting faction name: " + faction.getName() + ", member count: " + faction.getMemberCount());
         commandBuilder.set("#factionNameLabel.Text", faction.getName());
-        commandBuilder.set("#memberCountLabel.Text", "Members: " + faction.getMemberCount());
+        commandBuilder.set("#memberCountLabel.Text", I18n.get("ui.faction_show.member_count", faction.getMemberCount()));
         
         // Get universe for player name lookup (using safe helper)
         Universe universe = getUniverseSafely();
@@ -127,9 +170,9 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
             ConfigUtil.debug("FactionShowPage: Hiding #noMembersLabel, showing " + members.size() + " members");
             commandBuilder.set("#noMembersLabel.Visible", false);
             
-            // Check if player is owner (for showing permissions buttons)
-            boolean isOwner = faction.isOwner(playerUuid);
-            ConfigUtil.debug("FactionShowPage: Player is owner: " + isOwner);
+            // Check if player is owner (or admin viewing this faction)
+            boolean isOwner = (adminViewFactionId != null) || faction.isOwner(playerUuid);
+            ConfigUtil.debug("FactionShowPage: Player is owner (or admin): " + isOwner);
             
             // Dynamically append member rows using the PluginListPage pattern
             for (int i = 0; i < members.size(); i++) {
@@ -145,8 +188,9 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
                 String labelSelector = selector + " #MemberLabel";
                 String buttonSelector = selector + " #PermissionsButton";
                 
-                // Set member label text
+                // Set member label text and row button from I18n
                 commandBuilder.set(labelSelector + ".Text", memberText);
+                commandBuilder.set(buttonSelector + ".Text", I18n.get("ui.row.permissions"));
                 
                 // Show/hide permissions button based on ownership
                 if (isOwner && !member.uuid.equals(playerUuid)) {
@@ -166,8 +210,8 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
             }
         }
         
-        // Pending Invites section (owner only)
-        boolean isOwner = faction.isOwner(playerUuid);
+        // Pending Invites section (owner or admin only)
+        boolean isOwner = (adminViewFactionId != null) || faction.isOwner(playerUuid);
         ConfigUtil.debug("FactionShowPage: Processing pending invites section, isOwner: " + isOwner);
         if (isOwner) {
             commandBuilder.set("#pendingInvitesSection.Visible", true);
@@ -194,7 +238,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
                 for (int i = 0; i < pendingInvites.size(); i++) {
                     PendingInvite invite = pendingInvites.get(i);
                     UUID invitedPlayerUuid = invite.getPlayerUuid();
-                    String playerName = getPlayerName(universe, invitedPlayerUuid);
+                    String playerName = PlayerUtils.getPlayerName(universe, invitedPlayerUuid);
                     ConfigUtil.debug("FactionShowPage: Processing pending invite for: " + playerName + " (UUID: " + invitedPlayerUuid + ")");
                     
                     // Append the invite row component
@@ -205,8 +249,9 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
                     String labelSelector = selector + " #InviteLabel";
                     String buttonSelector = selector + " #CancelButton";
                     
-                    // Set invite label text
+                    // Set invite label text and row button from I18n
                     commandBuilder.set(labelSelector + ".Text", "📨 " + playerName);
+                    commandBuilder.set(buttonSelector + ".Text", I18n.get("ui.row.cancel"));
                     
                     // Bind cancel invite button event
                     eventBuilder.addEventBinding(
@@ -300,8 +345,11 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         commandBuilder.set("#pendingInvitesPageSection.Visible", false);
         commandBuilder.set("#noPermissionSection.Visible", false);
         
-        // Show create faction section
+        // Show create faction section and set its labels/placeholder/button from I18n
         commandBuilder.set("#createFactionSection.Visible", true);
+        commandBuilder.set("#createFactionSection #instructionsLabel.Text", I18n.get("ui.create.instructions"));
+        commandBuilder.set("#createFactionSection #FactionNameInput.PlaceholderText", I18n.get("ui.create.placeholder"));
+        commandBuilder.set("#createFactionButtonInSection.Text", I18n.get("ui.create.create_button"));
         
         // Hide all action buttons
         commandBuilder.set("#diplomacyButton.Visible", false);
@@ -368,6 +416,10 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
+        // In admin mode use the viewed faction; otherwise use player's faction
+        FactionInfo currentFaction = adminViewFactionId != null
+            ? factionManager.getFactionById(adminViewFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
         
         if ("close".equals(data.action)) {
             player.getPageManager().setPage(ref, store, Page.None);
@@ -375,50 +427,79 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         }
         
         if ("diplomacy".equals(data.action)) {
-            FactionInfo currentFaction = factionManager.getFactionFromPlayer(playerUuid);
             if (currentFaction == null) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be in a faction to access diplomacy")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.must_be_in_faction_diplomacy"))
                     .color(Color.RED).bold(true));
                 return;
             }
-            
-            // TODO: Open diplomacy page when implemented
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Diplomacy functionality not yet implemented")
-                .color(Color.YELLOW).bold(true));
+            FactionDiplomacyPage diplomacyPage = adminViewFactionId != null
+                ? new FactionDiplomacyPage(playerRef, adminViewFactionId)
+                : new FactionDiplomacyPage(playerRef);
+            player.getPageManager().openCustomPage(ref, store, diplomacyPage);
             return;
         }
         
         if ("claim".equals(data.action)) {
-            FactionInfo currentFaction = factionManager.getFactionFromPlayer(playerUuid);
             if (currentFaction == null) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be in a faction to claim chunks")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.must_be_in_faction_claim"))
                     .color(Color.RED).bold(true));
                 return;
             }
             
-            // TODO: Open claim page when implemented
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Claim functionality not yet implemented")
-                .color(Color.YELLOW).bold(true));
+            // handleDataEvent runs on World thread - can access EntityStore directly
+            PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
+            if (playerRef == null) {
+                return;
+            }
+            
+            // Get player's current chunk position
+            int blockX = (int) playerRef.getTransform().getPosition().getX();
+            int blockZ = (int) playerRef.getTransform().getPosition().getZ();
+            int chunkX = com.hypixel.hytale.math.util.ChunkUtil.chunkCoordinate(blockX);
+            int chunkZ = com.hypixel.hytale.math.util.ChunkUtil.chunkCoordinate(blockZ);
+            
+            World world = player.getWorld();
+            if (world == null) {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.error_world"))
+                    .color(Color.RED));
+                return;
+            }
+            
+            String dimension = world.getName();
+            
+            // Validate dimension allows claiming
+            if (!factionManager.canClaimInDimension(world)) {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You cannot claim chunks in this dimension")
+                    .color(Color.RED));
+                return;
+            }
+            
+            // Open chunk visualizer page (pass admin faction when in admin mode)
+            ChunkVisualizerPage visualizerPage = adminViewFactionId != null
+                ? new ChunkVisualizerPage(playerRef, dimension, chunkX, chunkZ, adminViewFactionId)
+                : new ChunkVisualizerPage(playerRef, dimension, chunkX, chunkZ);
+            player.getPageManager().openCustomPage(ref, store, visualizerPage);
             return;
         }
         
         if ("settings".equals(data.action)) {
-            FactionInfo currentFaction = factionManager.getFactionFromPlayer(playerUuid);
             if (currentFaction == null) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be in a faction to access settings")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.must_be_in_faction_settings"))
                     .color(Color.RED).bold(true));
                 return;
             }
             
-            FactionSettingsPage settingsPage = new FactionSettingsPage(playerRef);
+            FactionSettingsPage settingsPage = adminViewFactionId != null
+                ? new FactionSettingsPage(playerRef, adminViewFactionId)
+                : new FactionSettingsPage(playerRef);
             player.getPageManager().openCustomPage(ref, store, settingsPage);
             return;
         }
         
         if ("permissions".equals(data.action) && data.memberUuid != null) {
-            FactionInfo currentFaction = factionManager.getFactionFromPlayer(playerUuid);
-            if (currentFaction == null || !currentFaction.isOwner(playerUuid)) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be the faction owner to manage member permissions")
+            boolean canManagePerms = currentFaction != null && ((adminViewFactionId != null) || currentFaction.isOwner(playerUuid));
+            if (!canManagePerms) {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.owner_permissions"))
                     .color(Color.RED).bold(true));
                 return;
             }
@@ -429,15 +510,15 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         }
         
         if ("cancelInvite".equals(data.action) && data.invitedPlayerUuid != null) {
-            FactionInfo currentFaction = factionManager.getFactionFromPlayer(playerUuid);
-            if (currentFaction == null || !currentFaction.isOwner(playerUuid)) {
+            boolean canCancelInvite = currentFaction != null && ((adminViewFactionId != null) || currentFaction.isOwner(playerUuid));
+            if (!canCancelInvite) {
                 player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be the faction owner to cancel invites")
                     .color(Color.RED).bold(true));
                 return;
             }
             
             Universe universe = getUniverseSafely();
-            String playerName = getPlayerName(universe, data.invitedPlayerUuid);
+            String playerName = PlayerUtils.getPlayerName(universe, data.invitedPlayerUuid);
             
             // Cancel the invite
             boolean cancelled = factionManager.cancelPendingInvite(
@@ -446,13 +527,13 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
             );
             
             if (cancelled) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Invite cancelled for " + playerName)
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.invite_cancelled", playerName))
                     .color(Color.GREEN).bold(true));
                 
                 // Refresh the page to show updated list
                 refreshPage(ref, store);
             } else {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Failed to cancel invite")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.failed_cancel_invite"))
                     .color(Color.RED).bold(true));
                 // Refresh to clear loading state
                 refreshPage(ref, store);
@@ -509,45 +590,25 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         
         // Add owner first
         if (faction.getOwner() != null) {
-            String ownerName = getPlayerName(universe, faction.getOwner());
+            String ownerName = PlayerUtils.getPlayerName(universe, faction.getOwner());
             members.add(new MemberInfo(faction.getOwner(), ownerName, "owner"));
         }
         
         // Add generals
         for (UUID generalUuid : faction.getGenerals()) {
-            String generalName = getPlayerName(universe, generalUuid);
+            String generalName = PlayerUtils.getPlayerName(universe, generalUuid);
             members.add(new MemberInfo(generalUuid, generalName, "general"));
         }
         
         // Add regular members (excluding generals)
         for (UUID memberUuid : faction.getMembers()) {
             if (!faction.isGeneral(memberUuid)) {
-                String memberName = getPlayerName(universe, memberUuid);
+                String memberName = PlayerUtils.getPlayerName(universe, memberUuid);
                 members.add(new MemberInfo(memberUuid, memberName, "member"));
             }
         }
         
         return members;
-    }
-    
-    /**
-     * Gets player name from UUID using Universe.
-     */
-    private static String getPlayerName(Universe universe, UUID uuid) {
-        if (universe == null || uuid == null) {
-            return uuid != null ? uuid.toString() : "Unknown";
-        }
-        
-        try {
-            PlayerRef playerRef = universe.getPlayer(uuid);
-            if (playerRef != null) {
-                return playerRef.getUsername();
-            }
-        } catch (Exception e) {
-            ConfigUtil.debug("Failed to get player name for UUID " + uuid + ": " + e.getMessage());
-        }
-        
-        return uuid.toString();
     }
     
     /**
@@ -557,11 +618,11 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
     private static String getRolePrefix(String role) {
         switch (role) {
             case "owner":
-                return "Owner: ";
+                return I18n.get("ui.faction_show.role_owner");
             case "general":
-                return "General: ";
+                return I18n.get("ui.faction_show.role_general");
             case "member":
-                return "Member: ";
+                return I18n.get("ui.faction_show.role_member");
             default:
                 return "";
         }
@@ -622,7 +683,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         
         // Validate input
         if (factionName == null || factionName.trim().isEmpty()) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction name cannot be empty")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.name_empty"))
                 .color(Color.RED).bold(true));
             refreshPage(ref, store);
             return;
@@ -631,7 +692,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         String trimmedName = factionName.trim();
         int maxLength = FactionManager.getMaxFactionNameLength();
         if (trimmedName.length() > maxLength) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction name cannot exceed " + maxLength + " characters")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.name_too_long", maxLength))
                 .color(Color.RED).bold(true));
             refreshPage(ref, store);
             return;
@@ -639,7 +700,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         
         // Check permission
         if (!PermissionUtil.canCreateFaction(playerUuid)) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You don't have permission to create factions")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.no_permission_create"))
                 .color(Color.RED).bold(true));
             refreshPage(ref, store);
             return;
@@ -648,7 +709,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         // Check if player is already in a faction
         FactionInfo existingFaction = factionManager.getFactionFromPlayer(playerUuid);
         if (existingFaction != null) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You are already in a faction: " + existingFaction.getName())
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.already_in_faction", existingFaction.getName()))
                 .color(Color.RED).bold(true));
             refreshPage(ref, store);
             return;
@@ -662,7 +723,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
                 .color(Color.RED).bold(true));
             refreshPage(ref, store);
         } else {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction '" + faction.getName() + "' created successfully!")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.created_success", faction.getName()))
                 .color(Color.GREEN).bold(true));
             
             // Refresh the page to show the new faction state

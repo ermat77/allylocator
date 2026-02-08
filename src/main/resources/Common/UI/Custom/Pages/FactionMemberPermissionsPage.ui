@@ -137,6 +137,132 @@ $C.@PageOverlay {
             Anchor: (Left: 10);
           }
         }
+
+        Group #openChestGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #OpenChestCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #openChestLabel {
+            Text: "Open Chest";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
+
+        Group #openDoorGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #OpenDoorCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #openDoorLabel {
+            Text: "Open Door";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
+
+        Group #openBenchGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #OpenBenchCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #openBenchLabel {
+            Text: "Use Bench";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
+
+        Group #useChairGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #UseChairCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #useChairLabel {
+            Text: "Use Chair";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
+
+        Group #usePortalGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #UsePortalCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #usePortalLabel {
+            Text: "Use Portal";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
+
+        Group #placeBlockGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #PlaceBlockCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #placeBlockLabel {
+            Text: "Place Block";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
+
+        Group #breakBlockGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #BreakBlockCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #breakBlockLabel {
+            Text: "Break Block";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
       }
 
       Group #spacer {

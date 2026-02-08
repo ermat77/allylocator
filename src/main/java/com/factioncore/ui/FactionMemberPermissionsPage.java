@@ -4,6 +4,7 @@ import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.ui.events.FactionMemberPermissionsPageEventData;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -50,11 +51,12 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         FactionManager factionManager = FactionManager.getInstance();
         FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
         
-        // Validate owner
-        if (faction == null || !faction.isOwner(playerUuid)) {
+        // Validate owner or admin (can manage member permissions for any faction)
+        boolean canManage = faction != null && (faction.isOwner(playerUuid) || PermissionUtil.canManageMemberPermissionsAdmin(playerUuid));
+        if (faction == null || !canManage) {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player != null) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be the faction owner to manage member permissions")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.owner_only"))
                     .color(Color.RED).bold(true));
                 player.getPageManager().setPage(ref, store, Page.None);
             }
@@ -65,7 +67,7 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         if (targetMemberUuid == null || !faction.isMember(targetMemberUuid)) {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player != null) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Invalid member")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.invalid_member"))
                     .color(Color.RED).bold(true));
                 player.getPageManager().setPage(ref, store, Page.None);
             }
@@ -77,9 +79,27 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         Set<String> currentPermissions = com.factioncore.permission.FactionPermissionManager.getInstance().getMemberPermissions(targetMemberUuid, faction.getId());
         
         commandBuilder.append("Pages/FactionMemberPermissionsPage");
+
+        // Set static UI text from I18n
+        commandBuilder.set("#instructionsLabel.Text", I18n.get("ui.member_permissions.instructions"));
+        commandBuilder.set("#renameGroup #renameLabel.Text", I18n.get("ui.member_permissions.rename"));
+        commandBuilder.set("#colorGroup #colorLabel.Text", I18n.get("ui.member_permissions.color"));
+        commandBuilder.set("#inviteGroup #inviteLabel.Text", I18n.get("ui.member_permissions.invite"));
+        commandBuilder.set("#alliesGroup #alliesLabel.Text", I18n.get("ui.member_permissions.allies"));
+        commandBuilder.set("#kickGroup #kickLabel.Text", I18n.get("ui.member_permissions.kick"));
+        commandBuilder.set("#enemiesGroup #enemiesLabel.Text", I18n.get("ui.member_permissions.enemies"));
+        commandBuilder.set("#openChestGroup #openChestLabel.Text", I18n.get("ui.member_permissions.open_chest"));
+        commandBuilder.set("#openDoorGroup #openDoorLabel.Text", I18n.get("ui.member_permissions.open_door"));
+        commandBuilder.set("#openBenchGroup #openBenchLabel.Text", I18n.get("ui.member_permissions.open_bench"));
+        commandBuilder.set("#useChairGroup #useChairLabel.Text", I18n.get("ui.member_permissions.use_chair"));
+        commandBuilder.set("#usePortalGroup #usePortalLabel.Text", I18n.get("ui.member_permissions.use_portal"));
+        commandBuilder.set("#placeBlockGroup #placeBlockLabel.Text", I18n.get("ui.member_permissions.place_block"));
+        commandBuilder.set("#breakBlockGroup #breakBlockLabel.Text", I18n.get("ui.member_permissions.break_block"));
+        commandBuilder.set("#saveButton.Text", I18n.get("ui.member_permissions.save"));
+        commandBuilder.set("#cancelButton.Text", I18n.get("ui.member_permissions.cancel"));
         
         // Update title with member name
-        commandBuilder.set("#Title #TitleText.Text", "Member Permissions: " + memberName);
+        commandBuilder.set("#Title #TitleText.Text", I18n.get("ui.member_permissions.title", memberName));
         
         // Set checkbox states from current permissions
         commandBuilder.set("#RenameCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_RENAME));
@@ -88,6 +108,13 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         commandBuilder.set("#AlliesCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_MANAGE_ALLIES));
         commandBuilder.set("#KickCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_KICK_MEMBERS));
         commandBuilder.set("#EnemiesCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_MANAGE_ENEMIES));
+        commandBuilder.set("#OpenChestCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_OPEN_CHEST));
+        commandBuilder.set("#OpenDoorCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_OPEN_DOOR));
+        commandBuilder.set("#OpenBenchCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_OPEN_BENCH));
+        commandBuilder.set("#UseChairCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_USE_CHAIR));
+        commandBuilder.set("#UsePortalCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_USE_PORTAL));
+        commandBuilder.set("#PlaceBlockCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_PLACE_BLOCK));
+        commandBuilder.set("#BreakBlockCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_BREAK_BLOCK));
         
         // Bind save button with all checkbox values and target member UUID
         eventBuilder.addEventBinding(
@@ -102,6 +129,13 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
                 .append("@AlliesPermission", "#AlliesCheckbox.Value")
                 .append("@KickPermission", "#KickCheckbox.Value")
                 .append("@EnemiesPermission", "#EnemiesCheckbox.Value")
+                .append("@OpenChestPermission", "#OpenChestCheckbox.Value")
+                .append("@OpenDoorPermission", "#OpenDoorCheckbox.Value")
+                .append("@OpenBenchPermission", "#OpenBenchCheckbox.Value")
+                .append("@UseChairPermission", "#UseChairCheckbox.Value")
+                .append("@UsePortalPermission", "#UsePortalCheckbox.Value")
+                .append("@PlaceBlockPermission", "#PlaceBlockCheckbox.Value")
+                .append("@BreakBlockPermission", "#BreakBlockCheckbox.Value")
         );
         
         // Bind cancel button
@@ -131,11 +165,12 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         
         UUID playerUuid = playerRef.getUuid();
         
-        // Re-validate owner
+        // Re-validate owner or admin
         FactionManager factionManager = FactionManager.getInstance();
         FactionInfo currentFaction = factionManager.getFactionFromPlayer(playerUuid);
-        if (currentFaction == null || !currentFaction.isOwner(playerUuid)) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be the faction owner to manage member permissions")
+        boolean canManage = currentFaction != null && (currentFaction.isOwner(playerUuid) || PermissionUtil.canManageMemberPermissionsAdmin(playerUuid));
+        if (currentFaction == null || !canManage) {
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.owner_only"))
                 .color(Color.RED).bold(true));
             return;
         }
@@ -168,6 +203,27 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         if (Boolean.TRUE.equals(data.enemiesPermission)) {
             selectedPermissions.add(PermissionUtil.FACTION_PERM_MANAGE_ENEMIES);
         }
+        if (Boolean.TRUE.equals(data.openChestPermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_OPEN_CHEST);
+        }
+        if (Boolean.TRUE.equals(data.openDoorPermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_OPEN_DOOR);
+        }
+        if (Boolean.TRUE.equals(data.openBenchPermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_OPEN_BENCH);
+        }
+        if (Boolean.TRUE.equals(data.useChairPermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_USE_CHAIR);
+        }
+        if (Boolean.TRUE.equals(data.usePortalPermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_USE_PORTAL);
+        }
+        if (Boolean.TRUE.equals(data.placeBlockPermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_PLACE_BLOCK);
+        }
+        if (Boolean.TRUE.equals(data.breakBlockPermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_BREAK_BLOCK);
+        }
         
         // Update permissions via FactionPermissionManager (non-blocking, updates cache immediately)
         com.factioncore.permission.FactionPermissionManager.getInstance().setMemberPermissions(targetUuid, selectedPermissions, currentFaction.getId());
@@ -179,7 +235,7 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         factionManager.saveFaction(currentFaction);
         
         String memberName = getPlayerName(targetUuid);
-        player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Permissions updated for " + memberName)
+        player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.updated", memberName))
             .color(Color.GREEN).bold(true));
         
         ConfigUtil.debug("Permissions saved for member: " + targetUuid);

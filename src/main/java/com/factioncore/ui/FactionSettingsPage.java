@@ -15,6 +15,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.ui.events.FactionSettingsPageEventData;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import java.awt.Color;
 import java.util.UUID;
@@ -26,9 +27,23 @@ import javax.annotation.Nonnull;
  * Uses native Hytale UI system with .ui files.
  */
 public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettingsPageEventData> {
-    
+
+    /** When non-null, show/edit this faction (admin context). When null, use player's faction. */
+    private final UUID contextFactionId;
+
     public FactionSettingsPage(@Nonnull PlayerRef playerRef) {
+        this(playerRef, null);
+    }
+
+    /**
+     * Opens settings for a specific faction (e.g. when opened from /f admin).
+     *
+     * @param playerRef       The player viewing the page
+     * @param contextFactionId The faction to manage, or null for player's own faction
+     */
+    public FactionSettingsPage(@Nonnull PlayerRef playerRef, UUID contextFactionId) {
         super(playerRef, CustomPageLifetime.CanDismiss, FactionSettingsPageEventData.CODEC);
+        this.contextFactionId = contextFactionId;
     }
     
     @Override
@@ -40,26 +55,37 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
     ) {
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
+        FactionInfo faction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
         
         if (faction == null) {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player != null) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be in a faction to access settings")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.must_be_in_faction_settings"))
                     .color(Color.RED).bold(true));
                 player.getPageManager().setPage(ref, store, Page.None);
             }
             return;
         }
         
-        // Check permissions for each feature
-        boolean isOwner = faction.isOwner(playerUuid);
+        // Check permissions for each feature (admin context = full access)
+        boolean isOwner = faction.isOwner(playerUuid) || (contextFactionId != null);
         boolean canRename = isOwner || PermissionUtil.canRenameFactionInFaction(playerUuid, faction);
         boolean canChangeColor = isOwner || PermissionUtil.canChangeColorInFaction(playerUuid, faction);
         
         String currentFactionName = faction.getName();
         
         commandBuilder.append("Pages/FactionSettingsPage.ui");
+
+        // Set static UI text from I18n
+        commandBuilder.set("#settingsTitleLabel.Text", I18n.get("ui.settings.title"));
+        commandBuilder.set("#renameLabel.Text", I18n.get("ui.settings.rename_label"));
+        commandBuilder.set("#renameButton.Text", I18n.get("ui.settings.rename_button"));
+        commandBuilder.set("#colorLabel.Text", I18n.get("ui.settings.color_label"));
+        commandBuilder.set("#backButton.Text", I18n.get("ui.settings.back"));
+        commandBuilder.set("#disbandButton.Text", I18n.get("ui.settings.disband"));
+        commandBuilder.set("#closeButton.Text", I18n.get("ui.settings.close"));
         
         // Set current faction name in text input
         commandBuilder.set("#RenameInput.Value", currentFactionName);
@@ -80,8 +106,9 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
         String colorHex = String.format("%06X", currentColor);
         commandBuilder.set("#ColorPicker.Value", "#" + colorHex);
         
-        // Show disband button only for owner
-        commandBuilder.set("#disbandButton.Visible", isOwner);
+        // Show disband button for owner or admin (when in admin context)
+        boolean canDisband = isOwner || (contextFactionId != null && PermissionUtil.canDisbandFactionAdmin(playerUuid));
+        commandBuilder.set("#disbandButton.Visible", canDisband);
         
         // Bind rename button with text input value
         eventBuilder.addEventBinding(
@@ -135,10 +162,12 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
         
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
+        FactionInfo faction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
         
         if (faction == null) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You must be in a faction to access settings")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.must_be_in_faction_settings"))
                 .color(Color.RED).bold(true));
             player.getPageManager().setPage(ref, store, Page.None);
             return;
@@ -150,7 +179,9 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
                 break;
                 
             case "backToFaction":
-                FactionShowPage page = new FactionShowPage(playerRef);
+                FactionShowPage page = contextFactionId != null
+                    ? new FactionShowPage(playerRef, contextFactionId)
+                    : new FactionShowPage(playerRef);
                 player.getPageManager().openCustomPage(ref, store, page);
                 break;
                 
@@ -171,7 +202,7 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
     private void handleRename(Ref<EntityStore> ref, Store<EntityStore> store, Player player, 
                               UUID playerUuid, FactionInfo faction, String newName) {
         if (newName == null || newName.trim().isEmpty()) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction name cannot be empty. Please enter a new name.")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.name_empty"))
                 .color(Color.RED).bold(true));
             // Refresh UI to clear loading state
             refreshPage(ref, store);
@@ -181,7 +212,7 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
         String trimmedName = newName.trim();
         int maxLength = FactionManager.getMaxFactionNameLength();
         if (trimmedName.length() > maxLength) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction name cannot exceed " + maxLength + " characters")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.name_too_long", maxLength))
                 .color(Color.RED).bold(true));
             // Refresh UI to clear loading state
             refreshPage(ref, store);
@@ -190,7 +221,7 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
         
         // Check permission
         if (!PermissionUtil.canRenameFactionInFaction(playerUuid, faction)) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You don't have permission to rename this faction")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.no_permission_rename"))
                 .color(Color.RED).bold(true));
             // Refresh UI to clear loading state
             refreshPage(ref, store);
@@ -201,7 +232,7 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
         FactionManager factionManager = FactionManager.getInstance();
         FactionInfo existing = factionManager.getFactionByName(trimmedName);
         if (existing != null && !existing.getId().equals(faction.getId())) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("A faction with that name already exists")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.name_exists"))
                 .color(Color.RED).bold(true));
             // Refresh UI to clear loading state
             refreshPage(ref, store);
@@ -209,8 +240,11 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
         }
         
         faction.setName(trimmedName);
-        player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction renamed to '" + trimmedName + "'")
+        player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.renamed", trimmedName))
             .color(Color.GREEN).bold(true));
+        
+        // Clear cached world-map chunk images so they regenerate with the new faction name
+        factionManager.queueMapUpdateForFaction(faction);
         
         // Refresh UI immediately to update display and recreate event bindings
         refreshPage(ref, store);
@@ -222,7 +256,7 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
     private void handleColor(Ref<EntityStore> ref, Store<EntityStore> store, Player player,
                              UUID playerUuid, FactionInfo faction, String colorValue) {
         if (colorValue == null || colorValue.trim().isEmpty()) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Color value cannot be empty")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.color_empty"))
                 .color(Color.RED).bold(true));
             // Refresh UI to clear loading state
             refreshPage(ref, store);
@@ -253,7 +287,7 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
                     // Convert to hex and ensure it's 6 digits
                     colorStr = String.format("%06X", decimalColor);
                 } catch (NumberFormatException e) {
-                    player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Invalid color format. Received: " + colorValue)
+                    player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.invalid_color_received", colorValue))
                         .color(Color.RED).bold(true));
                     // Refresh UI to clear loading state
                     refreshPage(ref, store);
@@ -278,7 +312,7 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
             
             // Validate it's a valid hex string
             if (!colorStr.matches("[0-9A-Fa-f]{6}")) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Invalid color format. Color must contain only hex characters (0-9, A-F). Received: " + colorValue)
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.invalid_color_chars", colorValue))
                     .color(Color.RED).bold(true));
                 // Refresh UI to clear loading state
                 refreshPage(ref, store);
@@ -299,7 +333,7 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
             FactionManager factionManager = FactionManager.getInstance();
             factionManager.saveFaction(faction);
         } catch (NumberFormatException e) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Invalid color format. Use hex format (e.g., #FFFFFF). Received: " + colorValue)
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.invalid_color_format", colorValue))
                 .color(Color.RED).bold(true));
             // Refresh UI to clear loading state
             refreshPage(ref, store);
@@ -320,14 +354,14 @@ public class FactionSettingsPage extends InteractiveCustomUIPage<FactionSettings
         boolean disbanded = factionManager.disbandFaction(faction.getId(), playerUuid);
         
         if (disbanded) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction '" + factionName + "' has been disbanded")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.disbanded", factionName))
                 .color(Color.ORANGE).bold(true));
             
             // Close the page
             player.getPageManager().setPage(ref, store, Page.None);
         } else {
             // Permission denied or faction not found
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You don't have permission to disband this faction")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.settings.no_permission_disband"))
                 .color(Color.RED).bold(true));
             // Refresh UI to clear loading state
             refreshPage(ref, store);

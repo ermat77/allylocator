@@ -3,7 +3,9 @@ package com.factioncore.commands;
 import com.factioncore.claim.ChunkInfo;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
+import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.GameMode;
@@ -40,7 +42,7 @@ public class UnclaimChunkCommand extends AbstractAsyncCommand {
         CommandSender sender = commandContext.sender();
         
         if (!(sender instanceof Player)) {
-            commandContext.sendMessage(Message.raw("This command can only be used by players").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.players_only")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -48,7 +50,7 @@ public class UnclaimChunkCommand extends AbstractAsyncCommand {
         Ref<EntityStore> ref = player.getReference();
         
         if (ref == null || !ref.isValid()) {
-            commandContext.sendMessage(Message.raw("You must be in a world to use this command").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.must_be_in_world")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -63,18 +65,18 @@ public class UnclaimChunkCommand extends AbstractAsyncCommand {
             
             UUID playerUuid = playerRef.getUuid();
             
-            // Check permission
-            if (!PermissionUtil.canUnclaimChunk(playerUuid)) {
-                player.sendMessage(Message.raw("You don't have permission to unclaim chunks").color(Color.RED));
-                return;
-            }
-            
             FactionManager manager = FactionManager.getInstance();
             
             // Check if player is in a faction
             FactionInfo faction = manager.getFactionFromPlayer(playerRef.getUuid());
             if (faction == null) {
-                player.sendMessage(Message.raw("You must be in a faction to unclaim chunks").color(Color.RED));
+                player.sendMessage(Message.raw(I18n.get("chat.unclaim.must_be_in_faction")).color(Color.RED));
+                return;
+            }
+            
+            // Check permission: owner or member with unclaim permission
+            if (!PermissionUtil.canUnclaimChunkInFaction(playerUuid, faction)) {
+                player.sendMessage(Message.raw(I18n.get("chat.unclaim.no_permission")).color(Color.RED));
                 return;
             }
             
@@ -83,7 +85,7 @@ public class UnclaimChunkCommand extends AbstractAsyncCommand {
             int blockZ = (int) playerRef.getTransform().getPosition().getZ();
             World playerWorld = player.getWorld();
             if (playerWorld == null) {
-                player.sendMessage(Message.raw("Error: Could not get world").color(Color.RED));
+                player.sendMessage(Message.raw(I18n.get("chat.unclaim.error_world")).color(Color.RED));
                 return;
             }
             String dimension = playerWorld.getName();
@@ -91,19 +93,24 @@ public class UnclaimChunkCommand extends AbstractAsyncCommand {
             // Check if chunk is claimed
             ChunkInfo chunk = manager.getChunkRawCoords(dimension, blockX, blockZ);
             if (chunk == null) {
-                player.sendMessage(Message.raw("This chunk is not claimed").color(Color.YELLOW));
+                player.sendMessage(Message.raw(I18n.get("chat.unclaim.not_claimed")).color(Color.YELLOW));
                 return;
             }
             
             // Check if player's faction owns the chunk
             if (!chunk.getFactionOwner().equals(faction.getId())) {
-                player.sendMessage(Message.raw("This chunk is not claimed by your faction").color(Color.RED));
+                player.sendMessage(Message.raw(I18n.get("chat.unclaim.not_your_faction")).color(Color.RED));
                 return;
             }
             
             // Unclaim the chunk
             manager.unclaimRawCoords(dimension, blockX, blockZ);
-            player.sendMessage(Message.raw("Chunk unclaimed successfully! (" + manager.getAmountOfClaims(faction) + "/" + faction.getMaxClaimAmount() + " claims)").color(Color.GREEN));
+            player.sendMessage(Message.raw(I18n.get("chat.unclaim.success_counts", manager.getAmountOfClaims(faction), faction.getMaxClaimAmount())).color(Color.GREEN));
+
+            // Queue world map cache invalidation (processed by WorldMapUpdateTickingSystem)
+            int chunkX = ChunkUtil.chunkCoordinate(blockX);
+            int chunkZ = ChunkUtil.chunkCoordinate(blockZ);
+            FactionManager.getInstance().queueMapUpdate(world, chunkX, chunkZ);
         }, (Executor) world);
     }
 }

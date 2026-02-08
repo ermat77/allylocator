@@ -3,6 +3,7 @@ package com.factioncore.commands;
 import com.factioncore.claim.ChunkInfo;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -40,7 +41,7 @@ public class ClaimInfoCommand extends AbstractAsyncCommand {
         CommandSender sender = commandContext.sender();
         
         if (!(sender instanceof Player)) {
-            commandContext.sendMessage(Message.raw("This command can only be used by players").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.players_only")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -48,7 +49,7 @@ public class ClaimInfoCommand extends AbstractAsyncCommand {
         Ref<EntityStore> ref = player.getReference();
         
         if (ref == null || !ref.isValid()) {
-            commandContext.sendMessage(Message.raw("You must be in a world to use this command").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.must_be_in_world")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -65,7 +66,7 @@ public class ClaimInfoCommand extends AbstractAsyncCommand {
             
             // Check permission
             if (!PermissionUtil.canViewClaimInfo(playerUuid)) {
-                player.sendMessage(Message.raw("You don't have permission to view claim information").color(Color.RED));
+                player.sendMessage(Message.raw(I18n.get("chat.claiminfo.no_permission")).color(Color.RED));
                 return;
             }
             
@@ -76,7 +77,7 @@ public class ClaimInfoCommand extends AbstractAsyncCommand {
             int blockZ = (int) playerRef.getTransform().getPosition().getZ();
             World playerWorld = player.getWorld();
             if (playerWorld == null) {
-                player.sendMessage(Message.raw("Error: Could not get world").color(Color.RED));
+                player.sendMessage(Message.raw(I18n.get("chat.claiminfo.error_world")).color(Color.RED));
                 return;
             }
             String dimension = playerWorld.getName();
@@ -84,22 +85,22 @@ public class ClaimInfoCommand extends AbstractAsyncCommand {
             // Get chunk info
             ChunkInfo chunk = manager.getChunkRawCoords(dimension, blockX, blockZ);
             
-            player.sendMessage(Message.raw("=== Chunk Info ===").color(Color.YELLOW).bold(true));
+            player.sendMessage(Message.raw(I18n.get("chat.claiminfo.header")).color(Color.YELLOW).bold(true));
             
             if (chunk == null) {
-                player.sendMessage(Message.raw("Status: Not claimed").color(Color.GRAY));
+                player.sendMessage(Message.raw(I18n.get("chat.claiminfo.status_not_claimed")).color(Color.GRAY));
             } else {
                 FactionInfo chunkFaction = manager.getFactionById(chunk.getFactionOwner());
                 if (chunkFaction != null) {
-                    player.sendMessage(Message.raw("Status: Claimed by " + chunkFaction.getName()).color(Color.GREEN));
-                    player.sendMessage(Message.raw("Chunk: " + chunk.getChunkX() + ", " + chunk.getChunkZ()).color(Color.GRAY));
+                    player.sendMessage(Message.raw(I18n.get("chat.claiminfo.status_claimed_by", chunkFaction.getName())).color(Color.GREEN));
+                    player.sendMessage(Message.raw(I18n.get("chat.claiminfo.chunk_coords", chunk.getChunkX(), chunk.getChunkZ())).color(Color.GRAY));
                     
                     FactionInfo playerFaction = manager.getFactionFromPlayer(playerRef.getUuid());
                     if (playerFaction != null && chunkFaction.getId().equals(playerFaction.getId())) {
-                        player.sendMessage(Message.raw("This is your faction's claim").color(Color.GREEN));
+                        player.sendMessage(Message.raw(I18n.get("chat.claiminfo.your_claim")).color(Color.GREEN));
                     }
                 } else {
-                    player.sendMessage(Message.raw("Status: Claimed (faction not found)").color(Color.YELLOW));
+                    player.sendMessage(Message.raw(I18n.get("chat.claiminfo.status_faction_not_found")).color(Color.YELLOW));
                 }
             }
             
@@ -108,7 +109,7 @@ public class ClaimInfoCommand extends AbstractAsyncCommand {
             if (playerFaction != null) {
                 int currentClaims = manager.getAmountOfClaims(playerFaction);
                 int maxClaims = playerFaction.getMaxClaimAmount();
-                player.sendMessage(Message.raw("Your faction: " + currentClaims + "/" + maxClaims + " claims").color(Color.CYAN));
+                player.sendMessage(Message.raw(I18n.get("chat.claiminfo.your_faction_claims", currentClaims, maxClaims)).color(Color.CYAN));
             }
         }, (Executor) world);
     }

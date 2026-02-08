@@ -3,6 +3,8 @@ package com.factioncore.ui;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.I18n;
+import com.factioncore.util.PlayerUtils;
 import com.hypixel.hytale.codec.Codec;
 import com.hypixel.hytale.codec.KeyedCodec;
 import com.hypixel.hytale.codec.builder.BuilderCodec;
@@ -23,6 +25,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.BiConsumer;
 
 /**
  * UI page that displays faction members list.
@@ -53,42 +56,50 @@ public class FactionMembersPage extends InteractiveCustomUIPage<FactionMembersPa
         CODEC = builder.build();
     }
     
+    /** When non-null, show this faction's members (read-only). When null, show the player's own faction. */
+    private final UUID viewFactionId;
+
+    /** When non-null, invoked when back is pressed; when null, back button is hidden and not bound. */
+    private final BiConsumer<Ref<EntityStore>, Store<EntityStore>> backTarget;
+
     /**
-     * Creates a new FactionMembersPage.
-     * 
+     * Creates a new FactionMembersPage for the player's own faction (no back target).
+     *
      * @param playerRef The player reference
      */
     public FactionMembersPage(PlayerRef playerRef) {
-        super(playerRef, CustomPageLifetime.CanDismiss, CODEC);
+        this(playerRef, null, null);
     }
-    
+
     /**
-     * Gets player name from UUID using Universe.
-     * 
-     * @param universe The universe instance
-     * @param uuid The player UUID
-     * @return Player name or UUID string if not found
+     * Creates a new FactionMembersPage. When factionId is non-null, shows that faction's members (read-only)
+     * with title "Members of &lt;name&gt;". When null, shows the player's own faction.
+     *
+     * @param playerRef The player reference
+     * @param factionId The faction to view, or null for player's faction
      */
-    private String getPlayerName(Universe universe, UUID uuid) {
-        if (universe == null || uuid == null) {
-            return uuid != null ? uuid.toString() : "Unknown";
-        }
-        
-        try {
-            PlayerRef playerRef = universe.getPlayer(uuid);
-            if (playerRef != null) {
-                return playerRef.getUsername();
-            }
-        } catch (Exception e) {
-            ConfigUtil.debug("Failed to get player name for UUID " + uuid + ": " + e.getMessage());
-        }
-        
-        return uuid.toString();
+    public FactionMembersPage(PlayerRef playerRef, UUID factionId) {
+        this(playerRef, factionId, null);
+    }
+
+    /**
+     * Creates a new FactionMembersPage with an optional back target. When backTarget is non-null,
+     * the back button is shown and bound; when back is pressed, backTarget is invoked with (ref, store).
+     *
+     * @param playerRef The player reference
+     * @param factionId The faction to view, or null for player's faction
+     * @param backTarget Callback to run when back is pressed, or null to hide the back button
+     */
+    public FactionMembersPage(PlayerRef playerRef, UUID factionId,
+                              BiConsumer<Ref<EntityStore>, Store<EntityStore>> backTarget) {
+        super(playerRef, CustomPageLifetime.CanDismiss, CODEC);
+        this.viewFactionId = factionId;
+        this.backTarget = backTarget;
     }
     
     /**
-     * Builds member list display text with names and UUIDs.
-     * 
+     * Builds member list display text with player names only.
+     *
      * @param faction The faction info
      * @param universe The universe instance
      * @return Formatted member list string
@@ -98,78 +109,104 @@ public class FactionMembersPage extends InteractiveCustomUIPage<FactionMembersPa
         
         // Add owner
         if (faction.getOwner() != null) {
-            String ownerName = getPlayerName(universe, faction.getOwner());
-            memberLines.add("Owner: " + ownerName + " (" + faction.getOwner() + ")");
+            String ownerName = PlayerUtils.getPlayerName(universe, faction.getOwner());
+            memberLines.add(I18n.get("ui.faction_show.role_owner") + ownerName);
         }
         
         // Add generals
         for (UUID generalUuid : faction.getGenerals()) {
-            String generalName = getPlayerName(universe, generalUuid);
-            memberLines.add("General: " + generalName + " (" + generalUuid + ")");
+            String generalName = PlayerUtils.getPlayerName(universe, generalUuid);
+            memberLines.add(I18n.get("ui.faction_show.role_general") + generalName);
         }
         
         // Add regular members (excluding generals)
         for (UUID memberUuid : faction.getMembers()) {
             if (!faction.isGeneral(memberUuid)) {
-                String memberName = getPlayerName(universe, memberUuid);
-                memberLines.add("Member: " + memberName + " (" + memberUuid + ")");
+                String memberName = PlayerUtils.getPlayerName(universe, memberUuid);
+                memberLines.add(I18n.get("ui.faction_show.role_member") + memberName);
             }
         }
         
         if (memberLines.isEmpty()) {
-            return "No members";
+            return I18n.get("ui.faction_show.no_members");
         }
         
         return String.join("\n", memberLines);
     }
     
     @Override
-    public void build(Ref<EntityStore> ref, UICommandBuilder commands, 
+    public void build(Ref<EntityStore> ref, UICommandBuilder commands,
                         UIEventBuilder events, Store<EntityStore> store) {
         ConfigUtil.debug("FactionMembersPage.build() called");
-        
+
         // Load the UI file
         commands.append("Pages/FactionMembersPage.ui");
-        
-        // Get player's faction
+
+        // Set static UI text from I18n
+        commands.set("#Title #TitleText.Text", I18n.get("ui.members.faction_members"));
+        commands.set("#membersListLabel.Text", I18n.get("ui.members.header"));
+        commands.set("#membersListPlaceholder.Text", I18n.get("ui.members.loading"));
+        commands.set("#backButton.Text", I18n.get("ui.members.back"));
+        commands.set("#closeButton.Text", I18n.get("ui.members.close"));
+
         PlayerRef playerRefComponent = store.getComponent(ref, PlayerRef.getComponentType());
         if (playerRefComponent == null) {
             ConfigUtil.debug("FactionMembersPage: could not get PlayerRef component");
             return;
         }
-        
+
         UUID playerUuid = playerRefComponent.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
-        
-        if (faction == null) {
-            ConfigUtil.debug("FactionMembersPage: player does not have a faction");
-            // Close the page if no faction
-            Player player = store.getComponent(ref, Player.getComponentType());
-            if (player != null) {
-                player.getPageManager().setPage(ref, store, Page.None);
+        FactionInfo faction;
+
+        if (viewFactionId != null) {
+            faction = factionManager.getFactionById(viewFactionId);
+            if (faction == null) {
+                commands.set("#Title #TitleText.Text", I18n.get("ui.members.faction_not_found"));
+                commands.set("#membersListPlaceholder.Text", I18n.get("ui.members.faction_no_longer_exists"));
+                events.addEventBinding(CustomUIEventBindingType.Activating, "#closeButton",
+                    EventData.of("Action", "close"));
+                if (backTarget != null) {
+                    commands.set("#backButton.Visible", true);
+                    events.addEventBinding(CustomUIEventBindingType.Activating, "#backButton",
+                        EventData.of("Action", "back"));
+                } else {
+                    commands.set("#backButton.Visible", false);
+                }
+                return;
             }
-            return;
+            commands.set("#Title #TitleText.Text", I18n.get("ui.members.members_of", faction.getName()));
+        } else {
+            faction = factionManager.getFactionFromPlayer(playerUuid);
+            if (faction == null) {
+                Player player = store.getComponent(ref, Player.getComponentType());
+                if (player != null) {
+                    player.getPageManager().setPage(ref, store, Page.None);
+                }
+                return;
+            }
+            commands.set("#Title #TitleText.Text", I18n.get("ui.members.faction_members"));
         }
-        
-        // Get universe for player name lookup
+
         Universe universe = null;
         try {
             universe = Universe.get();
         } catch (Exception e) {
             ConfigUtil.debug("Failed to get universe: " + e.getMessage());
         }
-        
-        // Build and set member list
+
         String memberListText = buildMemberListText(faction, universe);
         commands.set("#membersListPlaceholder.Text", memberListText);
-        
-        // Bind close button
-        events.addEventBinding(
-            CustomUIEventBindingType.Activating,
-            "#closeButton",
-            EventData.of("Action", "close")
-        );
+
+        if (backTarget != null) {
+            commands.set("#backButton.Visible", true);
+            events.addEventBinding(CustomUIEventBindingType.Activating, "#backButton",
+                EventData.of("Action", "back"));
+        } else {
+            commands.set("#backButton.Visible", false);
+        }
+        events.addEventBinding(CustomUIEventBindingType.Activating, "#closeButton",
+            EventData.of("Action", "close"));
     }
     
     @Override
@@ -184,9 +221,26 @@ public class FactionMembersPage extends InteractiveCustomUIPage<FactionMembersPa
         }
         
         if ("close".equals(data.Action)) {
-            // Close the page
             ConfigUtil.debug("FactionMembersPage: closing page");
             player.getPageManager().setPage(ref, store, Page.None);
+            return;
+        }
+        if ("back".equals(data.Action)) {
+            ConfigUtil.debug("FactionMembersPage: back action received; ref=" + (ref != null ? "non-null" : "null")
+                + ", ref.isValid()=" + (ref != null && ref.isValid())
+                + ", store=" + (store != null ? "non-null" : "null")
+                + ", backTarget=" + (backTarget != null ? "non-null" : "null"));
+            if (backTarget != null) {
+                try {
+                    backTarget.accept(ref, store);
+                    ConfigUtil.debug("FactionMembersPage: backTarget.accept() returned");
+                } catch (Throwable t) {
+                    ConfigUtil.debug("FactionMembersPage: backTarget.accept() threw: " + t.getMessage(), t);
+                    throw t;
+                }
+            } else {
+                ConfigUtil.debug("FactionMembersPage: back ignored (no backTarget)");
+            }
         }
     }
 }

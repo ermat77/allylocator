@@ -1,6 +1,5 @@
 package com.factioncore.systems.marker;
 
-import com.factioncore.util.ConfigUtil;
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.ComponentType;
@@ -60,8 +59,6 @@ public class FactionMarkerFilterSystem extends EntityTickingSystem<EntityStore> 
         // Increment tick counter
         this.tick++;
         
-        ConfigUtil.verboseDebug("FactionMarkerFilterSystem.tick(): tick=" + this.tick + "/" + UPDATE_INTERVAL_TICKS);
-        
         // Only update filters periodically, not every frame
         if (this.tick < UPDATE_INTERVAL_TICKS) {
             return;
@@ -69,7 +66,6 @@ public class FactionMarkerFilterSystem extends EntityTickingSystem<EntityStore> 
         
         // Reset tick counter
         this.tick = 0;
-        ConfigUtil.verboseDebug("FactionMarkerFilterSystem.tick(): reached update interval, updating filters");
         
         // Get the entity reference
         Ref<EntityStore> ref = archetypeChunk.getReferenceTo(index);
@@ -79,15 +75,10 @@ public class FactionMarkerFilterSystem extends EntityTickingSystem<EntityStore> 
         PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
         
         if (player == null || playerRef == null) {
-            ConfigUtil.verboseDebug("FactionMarkerFilterSystem.tick(): player or playerRef is null, skipping");
             return;
         }
         
-        ConfigUtil.verboseDebug("FactionMarkerFilterSystem.tick(): applying filter to player " + playerRef.getUuid());
-        
         // Apply marker filter using the service
         FactionMarkerFilterService.applyFilterToPlayer(player, playerRef);
-        
-        ConfigUtil.verboseDebug("FactionMarkerFilterSystem.tick(): filter applied successfully");
     }
 }

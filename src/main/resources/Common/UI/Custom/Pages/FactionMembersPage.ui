@@ -43,10 +43,17 @@ $C.@PageOverlay {
         }
       }
 
-      // Close button
+      // Back and Close buttons
       Group #InteractionButtons {
         LayoutMode: Right;
         Anchor: (Bottom: 10);
+
+        $C.@TextButton #backButton {
+          Text: "BACK";
+          Anchor: (Width: 120, Height: 40);
+        }
+
+        Group { Anchor: (Width: 12); }
 
         $C.@CancelTextButton #closeButton {
           Text: "Close";
@@ -57,5 +64,3 @@ $C.@PageOverlay {
     }
   }
 }
-
-$C.@BackButton {}

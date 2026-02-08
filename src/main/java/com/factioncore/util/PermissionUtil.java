@@ -31,64 +31,94 @@ public class PermissionUtil {
         return LOGGER;
     }
     
+    // Player permission constants (use factioncore.player.* for default group)
     /**
      * Permission constant for creating factions.
      */
-    public static final String PERM_CREATE_FACTION = "factioncore.create_faction";
+    public static final String PERM_CREATE_FACTION = "factioncore.player.create_faction";
     
     /**
      * Permission constant for viewing faction information.
      */
-    public static final String PERM_SHOW_FACTION = "factioncore.show";
+    public static final String PERM_SHOW_FACTION = "factioncore.player.show";
     
     /**
      * Permission constant for claiming chunks.
      */
-    public static final String PERM_CLAIM_CHUNK = "factioncore.claim";
+    public static final String PERM_CLAIM_CHUNK = "factioncore.player.claim";
     
     /**
      * Permission constant for unclaiming chunks.
      */
-    public static final String PERM_UNCLAIM_CHUNK = "factioncore.unclaim";
+    public static final String PERM_UNCLAIM_CHUNK = "factioncore.player.unclaim";
     
     /**
      * Permission constant for viewing chunk claim information.
      */
-    public static final String PERM_CLAIM_INFO = "factioncore.claiminfo";
+    public static final String PERM_CLAIM_INFO = "factioncore.player.claiminfo";
     
     /**
      * Permission constant for renaming factions.
      */
-    public static final String PERM_RENAME_FACTION = "factioncore.rename";
+    public static final String PERM_RENAME_FACTION = "factioncore.player.rename";
     
     /**
      * Permission constant for changing faction color.
      */
-    public static final String PERM_CHANGE_COLOR = "factioncore.color";
+    public static final String PERM_CHANGE_COLOR = "factioncore.player.color";
     
     /**
      * Permission constant for disbanding factions.
      */
-    public static final String PERM_DISBAND_FACTION = "factioncore.disband";
+    public static final String PERM_DISBAND_FACTION = "factioncore.player.disband";
     
     /**
      * Permission constant for accessing faction settings.
      */
-    public static final String PERM_SETTINGS = "factioncore.settings";
+    public static final String PERM_SETTINGS = "factioncore.player.settings";
     
     /**
      * Permission constant for viewing faction members.
      */
-    public static final String PERM_VIEW_MEMBERS = "factioncore.members";
+    public static final String PERM_VIEW_MEMBERS = "factioncore.player.members";
     
     // Faction member permission constants (granted by faction owner)
-    public static final String FACTION_PERM_RENAME = "faction.rename";
-    public static final String FACTION_PERM_CHANGE_COLOR = "faction.change_color";
-    public static final String FACTION_PERM_INVITE_MEMBERS = "faction.invite_members";
-    public static final String FACTION_PERM_KICK_MEMBERS = "faction.kick_members";
-    public static final String FACTION_PERM_MANAGE_ALLIES = "faction.manage_allies";
-    public static final String FACTION_PERM_MANAGE_ENEMIES = "faction.manage_enemies";
-    
+    public static final String FACTION_PERM_RENAME = "ownfaction.rename";
+    public static final String FACTION_PERM_CHANGE_COLOR = "ownfaction.change_color";
+    public static final String FACTION_PERM_INVITE_MEMBERS = "ownfaction.invite_members";
+    public static final String FACTION_PERM_KICK_MEMBERS = "ownfaction.kick_members";
+    public static final String FACTION_PERM_MANAGE_ALLIES = "ownfaction.manage_allies";
+    public static final String FACTION_PERM_MANAGE_ENEMIES = "ownfaction.manage_enemies";
+    public static final String FACTION_PERM_CLAIM_CHUNK = "ownfaction.claim_chunk";
+    public static final String FACTION_PERM_UNCLAIM_CHUNK = "ownfaction.unclaim_chunk";
+
+    /** Own-faction interaction permissions (context faction=faction-uuid). */
+    public static final String FACTION_PERM_OPEN_CHEST = "factioncore.ownfaction.open_chest";
+    public static final String FACTION_PERM_OPEN_DOOR = "factioncore.ownfaction.open_door";
+    public static final String FACTION_PERM_OPEN_BENCH = "factioncore.ownfaction.open_bench";
+    public static final String FACTION_PERM_USE_CHAIR = "factioncore.ownfaction.use_chair";
+    public static final String FACTION_PERM_USE_PORTAL = "factioncore.ownfaction.use_portal";
+    public static final String FACTION_PERM_PLACE_BLOCK = "factioncore.ownfaction.place_block";
+    public static final String FACTION_PERM_BREAK_BLOCK = "factioncore.ownfaction.break_block";
+
+    /** Ally-faction interaction permissions (context faction=faction-name). */
+    public static final String ALLY_PERM_OPEN_CHEST = "factioncore.allyfaction.open_chest";
+    public static final String ALLY_PERM_OPEN_DOOR = "factioncore.allyfaction.open_door";
+    public static final String ALLY_PERM_OPEN_BENCH = "factioncore.allyfaction.open_bench";
+    public static final String ALLY_PERM_USE_CHAIR = "factioncore.allyfaction.use_chair";
+    public static final String ALLY_PERM_USE_PORTAL = "factioncore.allyfaction.use_portal";
+    public static final String ALLY_PERM_PLACE_BLOCK = "factioncore.allyfaction.place_block";
+    public static final String ALLY_PERM_BREAK_BLOCK = "factioncore.allyfaction.break_block";
+
+    /** Permission key suffixes for mapping block types (e.g. "open_chest", "open_door"). */
+    public static final String INTERACT_KEY_OPEN_CHEST = "open_chest";
+    public static final String INTERACT_KEY_OPEN_DOOR = "open_door";
+    public static final String INTERACT_KEY_OPEN_BENCH = "open_bench";
+    public static final String INTERACT_KEY_USE_CHAIR = "use_chair";
+    public static final String INTERACT_KEY_USE_PORTAL = "use_portal";
+    public static final String INTERACT_KEY_PLACE_BLOCK = "place_block";
+    public static final String INTERACT_KEY_BREAK_BLOCK = "break_block";
+
     // Admin permission constants (for actions on ANY faction)
     // Grouped under factioncore.admin.* for wildcard support
     public static final String PERM_ADMIN_RENAME = "factioncore.admin.rename";
@@ -101,6 +131,10 @@ public class PermissionUtil {
     public static final String PERM_ADMIN_CLAIM_CHUNK = "factioncore.admin.claimChunk";
     public static final String PERM_ADMIN_UNCLAIM_CHUNK = "factioncore.admin.unclaimChunk";
     public static final String PERM_ADMIN_BYPASS_PROTECTION = "factioncore.admin.bypassProtection";
+    /**
+     * Permission to open any faction's UI as superadmin (/f admin &lt;name&gt;).
+     */
+    public static final String PERM_ADMIN_OPEN_FACTION = "factioncore.admin.openFaction";
     
     // Cache the classloader that can load LuckPerms classes
     private static ClassLoader luckPermsClassLoader = null;
@@ -389,7 +423,7 @@ public class PermissionUtil {
      * Checks if a player has permission to create factions.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.create_faction permission
+     * @return true if the player has the factioncore.player.create_faction permission
      */
     public static boolean canCreateFaction(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_CREATE_FACTION);
@@ -412,7 +446,7 @@ public class PermissionUtil {
      * Checks if a player has permission to claim chunks.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.claim permission
+     * @return true if the player has the factioncore.player.claim permission
      */
     public static boolean canClaimChunk(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_CLAIM_CHUNK);
@@ -422,7 +456,7 @@ public class PermissionUtil {
      * Checks if a player has permission to unclaim chunks.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.unclaim permission
+     * @return true if the player has the factioncore.player.unclaim permission
      */
     public static boolean canUnclaimChunk(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_UNCLAIM_CHUNK);
@@ -432,7 +466,7 @@ public class PermissionUtil {
      * Checks if a player has permission to view chunk claim information.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.claiminfo permission
+     * @return true if the player has the factioncore.player.claiminfo permission
      */
     public static boolean canViewClaimInfo(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_CLAIM_INFO);
@@ -442,7 +476,7 @@ public class PermissionUtil {
      * Checks if a player has permission to rename factions.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.rename permission
+     * @return true if the player has the factioncore.player.rename permission
      */
     public static boolean canRenameFaction(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_RENAME_FACTION);
@@ -452,7 +486,7 @@ public class PermissionUtil {
      * Checks if a player has permission to change faction color.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.color permission
+     * @return true if the player has the factioncore.player.color permission
      */
     public static boolean canChangeColor(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_CHANGE_COLOR);
@@ -462,7 +496,7 @@ public class PermissionUtil {
      * Checks if a player has permission to disband factions.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.disband permission
+     * @return true if the player has the factioncore.player.disband permission
      */
     public static boolean canDisbandFaction(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_DISBAND_FACTION);
@@ -472,7 +506,7 @@ public class PermissionUtil {
      * Checks if a player has permission to access faction settings.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.settings permission
+     * @return true if the player has the factioncore.player.settings permission
      */
     public static boolean canAccessSettings(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_SETTINGS);
@@ -482,7 +516,7 @@ public class PermissionUtil {
      * Checks if a player has permission to view faction members.
      * 
      * @param playerUuid The UUID of the player
-     * @return true if the player has the factioncore.members permission
+     * @return true if the player has the factioncore.player.members permission
      */
     public static boolean canViewMembers(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_VIEW_MEMBERS);
@@ -588,6 +622,16 @@ public class PermissionUtil {
      */
     public static boolean canBypassProtectionAdmin(UUID playerUuid) {
         return hasPermissionOrWildcard(playerUuid, PERM_ADMIN_BYPASS_PROTECTION, "factioncore.admin.*");
+    }
+    
+    /**
+     * Checks if a player can open any faction's UI as superadmin (/f admin &lt;name&gt;).
+     *
+     * @param playerUuid The UUID of the player
+     * @return true if the player has factioncore.admin.openFaction or factioncore.admin.* permission
+     */
+    public static boolean canOpenFactionAdmin(UUID playerUuid) {
+        return hasPermissionOrWildcard(playerUuid, PERM_ADMIN_OPEN_FACTION, "factioncore.admin.*");
     }
     
     // Faction member permission checks (checks owner, admin permissions, AND faction member permissions)
@@ -734,5 +778,53 @@ public class PermissionUtil {
         }
         // Check faction member permission via FactionPermissionManager
         return com.factioncore.permission.FactionPermissionManager.getInstance().hasPermission(playerUuid, FACTION_PERM_KICK_MEMBERS, faction.getId());
+    }
+    
+    /**
+     * Checks if a player can claim chunks for a faction.
+     * Checks: owner status, admin permission, or faction member permission.
+     * 
+     * @param playerUuid The UUID of the player
+     * @param faction The faction to check permissions for
+     * @return true if player is owner, has admin permission, or has been granted the faction.claim_chunk permission by owner
+     */
+    public static boolean canClaimChunkInFaction(UUID playerUuid, com.factioncore.faction.FactionInfo faction) {
+        if (faction == null) {
+            return false;
+        }
+        // Owner always has permission
+        if (faction.isOwner(playerUuid)) {
+            return true;
+        }
+        // Check admin permission (can claim chunks for any faction)
+        if (canClaimChunkAdmin(playerUuid)) {
+            return true;
+        }
+        // Check faction member permission (granted by owner) via FactionPermissionManager
+        return com.factioncore.permission.FactionPermissionManager.getInstance().hasPermission(playerUuid, FACTION_PERM_CLAIM_CHUNK, faction.getId());
+    }
+    
+    /**
+     * Checks if a player can unclaim chunks for a faction.
+     * Checks: owner status, admin permission, or faction member permission.
+     * 
+     * @param playerUuid The UUID of the player
+     * @param faction The faction to check permissions for
+     * @return true if player is owner, has admin permission, or has been granted the faction.unclaim_chunk permission by owner
+     */
+    public static boolean canUnclaimChunkInFaction(UUID playerUuid, com.factioncore.faction.FactionInfo faction) {
+        if (faction == null) {
+            return false;
+        }
+        // Owner always has permission
+        if (faction.isOwner(playerUuid)) {
+            return true;
+        }
+        // Check admin permission (can unclaim chunks for any faction)
+        if (canUnclaimChunkAdmin(playerUuid)) {
+            return true;
+        }
+        // Check faction member permission (granted by owner) via FactionPermissionManager
+        return com.factioncore.permission.FactionPermissionManager.getInstance().hasPermission(playerUuid, FACTION_PERM_UNCLAIM_CHUNK, faction.getId());
     }
 }

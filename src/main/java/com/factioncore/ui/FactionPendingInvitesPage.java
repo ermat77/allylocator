@@ -4,6 +4,7 @@ import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.invite.PendingInvite;
 import com.factioncore.ui.events.FactionPendingInvitesPageEventData;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -45,6 +46,13 @@ public class FactionPendingInvitesPage extends InteractiveCustomUIPage<FactionPe
         List<PendingInvite> pendingInvites = factionManager.getPendingInvitesForPlayer(playerUuid);
         
         commandBuilder.append("Pages/FactionPendingInvitesPage");
+
+        // Set static UI text from I18n
+        commandBuilder.set("#Title #TitleText.Text", I18n.get("ui.pending_invites.title"));
+        commandBuilder.set("#headerLabel.Text", I18n.get("ui.pending_invites.header"));
+        commandBuilder.set("#noInvitesLabel.Text", I18n.get("ui.pending_invites.no_invites"));
+        commandBuilder.set("#createFactionButton.Text", I18n.get("ui.pending_invites.create_faction"));
+        commandBuilder.set("#closeButton.Text", I18n.get("ui.pending_invites.close"));
         
         // Build invite list dynamically using appendInline
         if (pendingInvites.isEmpty()) {
@@ -59,19 +67,25 @@ public class FactionPendingInvitesPage extends InteractiveCustomUIPage<FactionPe
                 String factionName = faction != null ? faction.getName() : "Unknown Faction";
                 String inviterName = invite.getInviterName() != null ? invite.getInviterName() : "Unknown";
                 
-                // Build UI DSL for invite card
+                // Build UI DSL for invite card (labels and buttons from I18n)
+                String factionLabel = escapeText(I18n.get("ui.pending_invites.faction_label", factionName));
+                String invitedByLabel = escapeText(I18n.get("ui.pending_invites.invited_by", inviterName));
+                String acceptText = escapeText(I18n.get("ui.row.accept"));
+                String refuseText = escapeText(I18n.get("ui.row.decline"));
                 String inviteCard = String.format(
                     "Group { LayoutMode: Top; Anchor: (Bottom: 10); " +
-                    "Label { Text: \"Faction: %s\"; Anchor: (Height: 25); } " +
-                    "Label { Text: \"Invited by: %s\"; Anchor: (Height: 20); } " +
+                    "Label { Text: \"%s\"; Anchor: (Height: 25); } " +
+                    "Label { Text: \"%s\"; Anchor: (Height: 20); } " +
                     "Group { LayoutMode: Right; Anchor: (Height: 35); " +
-                    "$C.@TextButton #accept_%s { Text: \"Accept\"; } " +
-                    "$C.@CancelTextButton #refuse_%s { Text: \"Refuse\"; } " +
+                    "$C.@TextButton #accept_%s { Text: \"%s\"; } " +
+                    "$C.@CancelTextButton #refuse_%s { Text: \"%s\"; } " +
                     "} }",
-                    escapeText(factionName),
-                    escapeText(inviterName),
+                    factionLabel,
+                    invitedByLabel,
                     factionId.toString(),
-                    factionId.toString()
+                    acceptText,
+                    factionId.toString(),
+                    refuseText
                 );
                 
                 // Append invite card to list
@@ -150,7 +164,7 @@ public class FactionPendingInvitesPage extends InteractiveCustomUIPage<FactionPe
             // Re-check that player doesn't have a faction
             FactionInfo currentFaction = factionManager.getFactionFromPlayer(playerUuid);
             if (currentFaction != null) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You are already in a faction")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.already_in_faction"))
                     .color(Color.RED).bold(true));
                 player.getPageManager().setPage(ref, store, Page.None);
                 return;
@@ -159,7 +173,7 @@ public class FactionPendingInvitesPage extends InteractiveCustomUIPage<FactionPe
             // Get the faction
             FactionInfo targetFaction = factionManager.getFactionById(factionId);
             if (targetFaction == null) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction no longer exists")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.faction_gone"))
                     .color(Color.RED).bold(true));
                 // Refresh page to remove invalid invite
                 FactionPendingInvitesPage page = new FactionPendingInvitesPage(playerRef);
@@ -176,7 +190,7 @@ public class FactionPendingInvitesPage extends InteractiveCustomUIPage<FactionPe
                 // Close the page - player now has a faction
                 player.getPageManager().setPage(ref, store, Page.None);
             } else {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Failed to join faction")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.join_failed"))
                     .color(Color.RED).bold(true));
                 // Refresh page
                 FactionPendingInvitesPage page = new FactionPendingInvitesPage(playerRef);
@@ -191,13 +205,13 @@ public class FactionPendingInvitesPage extends InteractiveCustomUIPage<FactionPe
             boolean removed = factionManager.cancelPendingInvite(playerUuid, factionId);
             
             if (removed) {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You refused the invite from '" + factionName + "'")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.refused", factionName))
                     .color(Color.YELLOW).bold(true));
                 // Refresh the page to show updated list
                 FactionPendingInvitesPage page = new FactionPendingInvitesPage(playerRef);
                 player.getPageManager().openCustomPage(ref, store, page);
             } else {
-                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Failed to refuse invite")
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.refuse_failed"))
                     .color(Color.RED).bold(true));
                 // Refresh page anyway
                 FactionPendingInvitesPage page = new FactionPendingInvitesPage(playerRef);

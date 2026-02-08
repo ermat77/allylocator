@@ -17,6 +17,13 @@ public class FactionMemberPermissionsPageEventData {
     public Boolean alliesPermission; // From checkbox
     public Boolean kickPermission; // From checkbox
     public Boolean enemiesPermission; // From checkbox
+    public Boolean openChestPermission;
+    public Boolean openDoorPermission;
+    public Boolean openBenchPermission;
+    public Boolean useChairPermission;
+    public Boolean usePortalPermission;
+    public Boolean placeBlockPermission;
+    public Boolean breakBlockPermission;
 
     public static final BuilderCodec<FactionMemberPermissionsPageEventData> CODEC = BuilderCodec.builder(
         FactionMemberPermissionsPageEventData.class,
@@ -74,6 +81,48 @@ public class FactionMemberPermissionsPageEventData {
         new KeyedCodec<>("@EnemiesPermission", Codec.BOOLEAN),
         (FactionMemberPermissionsPageEventData o, Boolean v) -> o.enemiesPermission = v,
         (FactionMemberPermissionsPageEventData o) -> o.enemiesPermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@OpenChestPermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.openChestPermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.openChestPermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@OpenDoorPermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.openDoorPermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.openDoorPermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@OpenBenchPermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.openBenchPermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.openBenchPermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@UseChairPermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.useChairPermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.useChairPermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@UsePortalPermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.usePortalPermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.usePortalPermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@PlaceBlockPermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.placeBlockPermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.placeBlockPermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@BreakBlockPermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.breakBlockPermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.breakBlockPermission
     )
     .add()
     .build();

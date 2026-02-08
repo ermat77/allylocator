@@ -1,6 +1,5 @@
 package com.factioncore.faction;
 
-import com.factioncore.util.ConfigUtil;
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.ComponentType;
@@ -61,49 +60,33 @@ public class FactionSystem extends EntityTickingSystem<EntityStore> {
         // Get PlayerRef to access player UUID
         PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
         if (playerRef == null) {
-            ConfigUtil.verboseDebug("FactionSystem.tick(): playerRef is null, skipping");
             return;
         }
         
         UUID playerUuid = playerRef.getUuid();
         if (playerUuid == null) {
-            ConfigUtil.verboseDebug("FactionSystem.tick(): playerUuid is null, skipping");
             return;
         }
         
-        ConfigUtil.verboseDebug("FactionSystem.tick(): processing player " + playerUuid);
-        
         // Get current faction from FactionManager
         FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
-        ConfigUtil.verboseDebug("FactionSystem.tick(): player " + playerUuid + " faction=" + (faction != null ? faction.getName() : "null"));
         
         // Get or create FactionComponent
         FactionComponent factionComponent = store.getComponent(ref, FactionComponent.getComponentType());
-        ConfigUtil.verboseDebug("FactionSystem.tick(): existing component=" + (factionComponent != null ? factionComponent.getFactionId() : "null"));
         
         if (faction != null) {
             // Player is in a faction - ensure component exists and is correct
             if (factionComponent == null) {
-                // Add component if it doesn't exist
-                ConfigUtil.verboseDebug("FactionSystem.tick(): adding FactionComponent for player " + playerUuid);
                 factionComponent = new FactionComponent(faction.getId());
                 commandBuffer.addComponent(ref, FactionComponent.getComponentType(), factionComponent);
             } else if (!faction.getId().equals(factionComponent.getFactionId())) {
-                // Update component if faction ID changed - use replaceComponent
-                ConfigUtil.verboseDebug("FactionSystem.tick(): updating FactionComponent for player " + playerUuid + 
-                               " (old=" + factionComponent.getFactionId() + ", new=" + faction.getId() + ")");
                 factionComponent = new FactionComponent(faction.getId());
                 commandBuffer.replaceComponent(ref, FactionComponent.getComponentType(), factionComponent);
-            } else {
-                ConfigUtil.verboseDebug("FactionSystem.tick(): component already correct for player " + playerUuid);
             }
         } else {
             // Player is not in a faction - remove component if it exists
             if (factionComponent != null) {
-                ConfigUtil.verboseDebug("FactionSystem.tick(): removing FactionComponent for player " + playerUuid);
                 commandBuffer.removeComponent(ref, FactionComponent.getComponentType());
-            } else {
-                ConfigUtil.verboseDebug("FactionSystem.tick(): player " + playerUuid + " has no faction and no component");
             }
         }
     }

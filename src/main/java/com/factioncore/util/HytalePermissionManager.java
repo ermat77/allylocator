@@ -238,7 +238,7 @@ public class HytalePermissionManager {
      * Checks if a player has a specific permission.
      * 
      * @param playerUuid The UUID of the player
-     * @param permission The permission node to check (e.g., "factioncore.create_faction")
+     * @param permission The permission node to check (e.g., "factioncore.player.create_faction")
      * @return true if the player has the permission, false otherwise
      */
     public boolean hasPermission(UUID playerUuid, String permission) {
@@ -296,7 +296,7 @@ public class HytalePermissionManager {
                     ConfigUtil.debug("HytalePermissionManager.hasPermission(): group " + groupName + " has exact permission match, granting");
                     return true;
                 }
-                // Check for wildcard permissions (e.g., "factioncore.*" matches "factioncore.create_faction")
+                // Check for wildcard permissions (e.g., "factioncore.player.*" matches "factioncore.player.create_faction")
                 if (perm.endsWith(".*") && permission.startsWith(perm.substring(0, perm.length() - 2))) {
                     ConfigUtil.debug("HytalePermissionManager.hasPermission(): group " + groupName + " has wildcard permission " + perm + " matching " + permission);
                     return true;

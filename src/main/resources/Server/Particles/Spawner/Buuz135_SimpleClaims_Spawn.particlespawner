@@ -1,0 +1,121 @@
+{
+  "RenderMode": "BlendLinear",
+  "ParticleRotationInfluence": "BillboardVelocity",
+  "LinearFiltering": true,
+  "LightInfluence": 0,
+  "ParticleRotateWithSpawner": true,
+  "ParticleLifeSpan": {
+    "Min": 2,
+    "Max": 3
+  },
+  "SpawnRate": {
+    "Min": 1.0,
+    "Max": 1
+  },
+  "Particle": {
+    "Texture": "Particles/Textures/Basic/Glow_Star.png",
+    "ScaleRatioConstraint": "None",
+    "UVOption": "RandomFlipU",
+    "Animation": {
+      "0": {
+        "FrameIndex": {
+          "Min": 0,
+          "Max": 0
+        },
+        "Opacity": 1,
+        "Scale": {
+          "X": {
+            "Min": 0.7,
+            "Max": 0.7
+          },
+          "Y": {
+            "Min": 0.7,
+            "Max": 0.7
+          }
+        }
+      },
+      "10": {
+        "Scale": {
+          "X": {
+            "Min": 0.7,
+            "Max": 0.7
+          },
+          "Y": {
+            "Min": 0.7,
+            "Max": 0.7
+          }
+        },
+        "Opacity": 1
+      },
+      "30": {
+        "Opacity": 1,
+        "Scale": {
+          "X": {
+            "Min": 0.7,
+            "Max": 0.7
+          },
+          "Y": {
+            "Min": 0.7,
+            "Max": 0.7
+          }
+        }
+      },
+      "70": {
+        "Opacity": 1.0,
+        "Scale": {
+          "X": {
+            "Min": 0.4,
+            "Max": 0.4
+          },
+          "Y": {
+            "Max": 0.4,
+            "Min": 0.4
+          }
+        }
+      },
+      "100": {
+        "Opacity": 1,
+        "Scale": {
+          "X": {
+            "Min": 0.5,
+            "Max": 0.5
+          },
+          "Y": {
+            "Min": 0.5,
+            "Max": 0.5
+          }
+        }
+      }
+    },
+    "InitialAnimationFrame": {
+      "Scale": {
+        "X": {
+          "Min": 0.1,
+          "Max": 0.1
+        },
+        "Y": {
+          "Min": 0.1,
+          "Max": 0.1
+        }
+      },
+      "Opacity": 1,
+      "FrameIndex": {
+        "Min": 0,
+        "Max": 0
+      }
+    },
+    "FrameSize": {
+      "Width": 32,
+      "Height": 32
+    },
+    "SoftParticlesFadeFactor": 2,
+    "SoftParticles": "Enable"
+  },
+  "SpawnBurst": true,
+  "CameraOffset": -0.2,
+  "Shape": "Cube",
+  "TotalParticles": {
+    "Min": 1,
+    "Max": 1
+  }
+}

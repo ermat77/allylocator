@@ -2,10 +2,11 @@ package com.factioncore.database;
 
 import com.factioncore.claim.ChunkInfo;
 import com.factioncore.claim.tracking.ModifiedTracking;
+import com.factioncore.diplomacy.AllySettings;
+import com.factioncore.diplomacy.PendingAllyRequest;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.invite.PendingInvite;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.server.core.Constants;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -58,8 +59,8 @@ public class DatabaseManager {
             throw new RuntimeException("SQLite JDBC driver not found", e);
         }
         
-        // Create database path
-        Path basePath = Constants.UNIVERSE_PATH.resolve("FactionCore");
+        // Create database path (basePath is e.g. mods/FactionCore, passed from Main)
+        Path basePath = com.factioncore.Main.get().getPluginDataPath();
         try {
             Files.createDirectories(basePath);
         } catch (Exception e) {
@@ -160,14 +161,85 @@ public class DatabaseManager {
                     "FOREIGN KEY (faction_id) REFERENCES factions(id) ON DELETE CASCADE" +
                     ")");
             
+            // Faction allies table (symmetric relationship)
+            statement.execute("CREATE TABLE IF NOT EXISTS faction_allies (" +
+                    "faction_id TEXT," +
+                    "ally_faction_id TEXT," +
+                    "PRIMARY KEY (faction_id, ally_faction_id)," +
+                    "FOREIGN KEY (faction_id) REFERENCES factions(id) ON DELETE CASCADE," +
+                    "FOREIGN KEY (ally_faction_id) REFERENCES factions(id) ON DELETE CASCADE" +
+                    ")");
+            
+            // Faction enemies table (one-way)
+            statement.execute("CREATE TABLE IF NOT EXISTS faction_enemies (" +
+                    "faction_id TEXT," +
+                    "enemy_faction_id TEXT," +
+                    "PRIMARY KEY (faction_id, enemy_faction_id)," +
+                    "FOREIGN KEY (faction_id) REFERENCES factions(id) ON DELETE CASCADE," +
+                    "FOREIGN KEY (enemy_faction_id) REFERENCES factions(id) ON DELETE CASCADE" +
+                    ")");
+            
+            // Pending ally requests table
+            statement.execute("CREATE TABLE IF NOT EXISTS pending_ally_requests (" +
+                    "requester_faction_id TEXT," +
+                    "target_faction_id TEXT," +
+                    "created_date TEXT," +
+                    "PRIMARY KEY (requester_faction_id, target_faction_id)," +
+                    "FOREIGN KEY (requester_faction_id) REFERENCES factions(id) ON DELETE CASCADE," +
+                    "FOREIGN KEY (target_faction_id) REFERENCES factions(id) ON DELETE CASCADE" +
+                    ")");
+            
+            // Ally settings table (per faction + ally pair)
+            statement.execute("CREATE TABLE IF NOT EXISTS ally_settings (" +
+                    "faction_id TEXT," +
+                    "ally_faction_id TEXT," +
+                    "share_markers INTEGER," +
+                    "allow_interactions INTEGER," +
+                    "PRIMARY KEY (faction_id, ally_faction_id)," +
+                    "FOREIGN KEY (faction_id) REFERENCES factions(id) ON DELETE CASCADE," +
+                    "FOREIGN KEY (ally_faction_id) REFERENCES factions(id) ON DELETE CASCADE" +
+                    ")");
+            
             // Create indexes for performance
             statement.execute("CREATE INDEX IF NOT EXISTS idx_faction_members_faction_id ON faction_members(faction_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_faction_permissions_faction_id ON faction_permissions(faction_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_claims_dimension ON claims(dimension)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_pending_invites_player_uuid ON pending_invites(player_uuid)");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_faction_allies_faction_id ON faction_allies(faction_id)");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_faction_enemies_faction_id ON faction_enemies(faction_id)");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_pending_ally_requests_requester ON pending_ally_requests(requester_faction_id)");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_pending_ally_requests_target ON pending_ally_requests(target_faction_id)");
+
+            migrateAllySettingsColumns(statement);
         }
     }
-    
+
+    /**
+     * Adds per-interaction columns to ally_settings if missing (migration for existing DBs).
+     */
+    private void migrateAllySettingsColumns(Statement statement) throws SQLException {
+        String[] columns = {
+            "allow_open_chest INTEGER DEFAULT 0",
+            "allow_open_door INTEGER DEFAULT 0",
+            "allow_open_bench INTEGER DEFAULT 0",
+            "allow_use_chair INTEGER DEFAULT 0",
+            "allow_use_portal INTEGER DEFAULT 0",
+            "allow_place_block INTEGER DEFAULT 0",
+            "allow_break_block INTEGER DEFAULT 0"
+        };
+        for (String colDef : columns) {
+            String colName = colDef.split(" ")[0];
+            try {
+                statement.execute("ALTER TABLE ally_settings ADD COLUMN " + colName + " INTEGER DEFAULT 0");
+            } catch (SQLException e) {
+                if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("duplicate column")) {
+                    throw e;
+                }
+                // Column already exists, ignore
+            }
+        }
+    }
+
     /**
      * Starts the writer thread that processes queued write operations.
      */
@@ -391,6 +463,115 @@ public class DatabaseManager {
         }, loadExecutor);
     }
     
+    /**
+     * Loads faction allies from the database asynchronously.
+     * @return CompletableFuture with map of factionId -> set of ally faction IDs
+     */
+    public CompletableFuture<Map<UUID, Set<UUID>>> loadFactionAlliesAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<UUID, Set<UUID>> allies = new HashMap<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery("SELECT * FROM faction_allies")) {
+                while (rs.next()) {
+                    UUID factionId = UUID.fromString(rs.getString("faction_id"));
+                    UUID allyFactionId = UUID.fromString(rs.getString("ally_faction_id"));
+                    allies.computeIfAbsent(factionId, k -> new HashSet<>()).add(allyFactionId);
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading faction allies: " + e.getMessage());
+                throw new RuntimeException("Failed to load faction allies", e);
+            }
+            return allies;
+        }, loadExecutor);
+    }
+    
+    /**
+     * Loads faction enemies from the database asynchronously.
+     * @return CompletableFuture with map of factionId -> set of enemy faction IDs
+     */
+    public CompletableFuture<Map<UUID, Set<UUID>>> loadFactionEnemiesAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<UUID, Set<UUID>> enemies = new HashMap<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery("SELECT * FROM faction_enemies")) {
+                while (rs.next()) {
+                    UUID factionId = UUID.fromString(rs.getString("faction_id"));
+                    UUID enemyFactionId = UUID.fromString(rs.getString("enemy_faction_id"));
+                    enemies.computeIfAbsent(factionId, k -> new HashSet<>()).add(enemyFactionId);
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading faction enemies: " + e.getMessage());
+                throw new RuntimeException("Failed to load faction enemies", e);
+            }
+            return enemies;
+        }, loadExecutor);
+    }
+    
+    /**
+     * Loads pending ally requests from the database asynchronously.
+     * @return CompletableFuture with list of PendingAllyRequest
+     */
+    public CompletableFuture<List<PendingAllyRequest>> loadPendingAllyRequestsAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<PendingAllyRequest> list = new ArrayList<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery("SELECT * FROM pending_ally_requests")) {
+                while (rs.next()) {
+                    PendingAllyRequest req = new PendingAllyRequest(
+                            UUID.fromString(rs.getString("requester_faction_id")),
+                            UUID.fromString(rs.getString("target_faction_id")),
+                            rs.getString("created_date")
+                    );
+                    list.add(req);
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading pending ally requests: " + e.getMessage());
+                throw new RuntimeException("Failed to load pending ally requests", e);
+            }
+            return list;
+        }, loadExecutor);
+    }
+    
+    /**
+     * Loads ally settings from the database asynchronously.
+     * @return CompletableFuture with map keyed by "factionId_allyFactionId" -> AllySettings
+     */
+    public CompletableFuture<Map<String, AllySettings>> loadAllySettingsAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, AllySettings> map = new HashMap<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery("SELECT * FROM ally_settings")) {
+                ResultSetMetaData meta = rs.getMetaData();
+                int colCount = meta.getColumnCount();
+                java.util.Set<String> columns = new HashSet<>();
+                for (int i = 1; i <= colCount; i++) {
+                    columns.add(meta.getColumnName(i).toLowerCase());
+                }
+                while (rs.next()) {
+                    UUID factionId = UUID.fromString(rs.getString("faction_id"));
+                    UUID allyFactionId = UUID.fromString(rs.getString("ally_faction_id"));
+                    boolean shareMarkers = rs.getInt("share_markers") != 0;
+                    boolean allowInteractions = rs.getInt("allow_interactions") != 0;
+                    boolean allowOpenChest = columns.contains("allow_open_chest") && rs.getInt("allow_open_chest") != 0;
+                    boolean allowOpenDoor = columns.contains("allow_open_door") && rs.getInt("allow_open_door") != 0;
+                    boolean allowOpenBench = columns.contains("allow_open_bench") && rs.getInt("allow_open_bench") != 0;
+                    boolean allowUseChair = columns.contains("allow_use_chair") && rs.getInt("allow_use_chair") != 0;
+                    boolean allowUsePortal = columns.contains("allow_use_portal") && rs.getInt("allow_use_portal") != 0;
+                    boolean allowPlaceBlock = columns.contains("allow_place_block") && rs.getInt("allow_place_block") != 0;
+                    boolean allowBreakBlock = columns.contains("allow_break_block") && rs.getInt("allow_break_block") != 0;
+                    String key = factionId.toString() + "_" + allyFactionId.toString();
+                    map.put(key, new AllySettings(shareMarkers, allowInteractions,
+                            allowOpenChest, allowOpenDoor, allowOpenBench, allowUseChair, allowUsePortal,
+                            allowPlaceBlock, allowBreakBlock));
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading ally settings: " + e.getMessage());
+                throw new RuntimeException("Failed to load ally settings", e);
+            }
+            return map;
+        }, loadExecutor);
+    }
+    
     // ========== Write Operations (Queued) ==========
     
     /**
@@ -558,6 +739,123 @@ public class DatabaseManager {
                     "DELETE FROM pending_invites WHERE player_uuid = ?")) {
                 ps.setString(1, playerUuid.toString());
                 ps.executeUpdate();
+            }
+        }));
+    }
+    
+    /**
+     * Queues save of all faction allies (replaces all rows).
+     */
+    public void saveAllFactionAllies(Map<UUID, Set<UUID>> factionAllies) {
+        Map<UUID, Set<UUID>> copy = new HashMap<>();
+        for (Map.Entry<UUID, Set<UUID>> e : factionAllies.entrySet()) {
+            copy.put(e.getKey(), new HashSet<>(e.getValue()));
+        }
+        Map<UUID, Set<UUID>> snapshot = copy;
+        writeQueue.offer(new WriteOperation("saveAllFactionAllies", conn -> {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM faction_allies");
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO faction_allies (faction_id, ally_faction_id) VALUES (?, ?)")) {
+                for (Map.Entry<UUID, Set<UUID>> entry : snapshot.entrySet()) {
+                    UUID factionId = entry.getKey();
+                    for (UUID allyId : entry.getValue()) {
+                        ps.setString(1, factionId.toString());
+                        ps.setString(2, allyId.toString());
+                        ps.addBatch();
+                    }
+                }
+                ps.executeBatch();
+            }
+        }));
+    }
+    
+    /**
+     * Queues save of all faction enemies (replaces all rows).
+     */
+    public void saveAllFactionEnemies(Map<UUID, Set<UUID>> factionEnemies) {
+        Map<UUID, Set<UUID>> copy = new HashMap<>();
+        for (Map.Entry<UUID, Set<UUID>> e : factionEnemies.entrySet()) {
+            copy.put(e.getKey(), new HashSet<>(e.getValue()));
+        }
+        Map<UUID, Set<UUID>> snapshot = copy;
+        writeQueue.offer(new WriteOperation("saveAllFactionEnemies", conn -> {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM faction_enemies");
+            }
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO faction_enemies (faction_id, enemy_faction_id) VALUES (?, ?)")) {
+                for (Map.Entry<UUID, Set<UUID>> entry : snapshot.entrySet()) {
+                    UUID factionId = entry.getKey();
+                    for (UUID enemyId : entry.getValue()) {
+                        ps.setString(1, factionId.toString());
+                        ps.setString(2, enemyId.toString());
+                        ps.addBatch();
+                    }
+                }
+                ps.executeBatch();
+            }
+        }));
+    }
+    
+    /**
+     * Queues save of all pending ally requests (replaces all rows).
+     */
+    public void saveAllPendingAllyRequests(List<PendingAllyRequest> requests) {
+        List<PendingAllyRequest> copy = new ArrayList<>(requests);
+        writeQueue.offer(new WriteOperation("saveAllPendingAllyRequests", conn -> {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM pending_ally_requests");
+            }
+            if (!copy.isEmpty()) {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO pending_ally_requests (requester_faction_id, target_faction_id, created_date) VALUES (?, ?, ?)")) {
+                    for (PendingAllyRequest req : copy) {
+                        ps.setString(1, req.getRequesterFactionId().toString());
+                        ps.setString(2, req.getTargetFactionId().toString());
+                        ps.setString(3, req.getCreatedDate() != null ? req.getCreatedDate() : LocalDateTime.now().format(DATE_FORMATTER));
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
+            }
+        }));
+    }
+    
+    /**
+     * Queues save of all ally settings (replaces all rows).
+     */
+    public void saveAllAllySettings(Map<String, AllySettings> allySettings) {
+        Map<String, AllySettings> snapshot = new HashMap<>(allySettings);
+        writeQueue.offer(new WriteOperation("saveAllAllySettings", conn -> {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM ally_settings");
+            }
+            if (!snapshot.isEmpty()) {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO ally_settings (faction_id, ally_faction_id, share_markers, allow_interactions, " +
+                        "allow_open_chest, allow_open_door, allow_open_bench, allow_use_chair, allow_use_portal, allow_place_block, allow_break_block) " +
+                        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                    for (Map.Entry<String, AllySettings> entry : snapshot.entrySet()) {
+                        String[] parts = entry.getKey().split("_", 2);
+                        if (parts.length != 2) continue;
+                        AllySettings settings = entry.getValue();
+                        ps.setString(1, parts[0]);
+                        ps.setString(2, parts[1]);
+                        ps.setInt(3, settings.isSharePlayerMarkers() ? 1 : 0);
+                        ps.setInt(4, settings.isAllowInteractionsInClaimedChunks() ? 1 : 0);
+                        ps.setInt(5, settings.isAllowOpenChest() ? 1 : 0);
+                        ps.setInt(6, settings.isAllowOpenDoor() ? 1 : 0);
+                        ps.setInt(7, settings.isAllowOpenBench() ? 1 : 0);
+                        ps.setInt(8, settings.isAllowUseChair() ? 1 : 0);
+                        ps.setInt(9, settings.isAllowUsePortal() ? 1 : 0);
+                        ps.setInt(10, settings.isAllowPlaceBlock() ? 1 : 0);
+                        ps.setInt(11, settings.isAllowBreakBlock() ? 1 : 0);
+                        ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
             }
         }));
     }

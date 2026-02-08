@@ -1,0 +1,22 @@
+{
+  "Spawners": [
+    {
+      "SpawnerId": "Buuz135_SimpleClaims_Spawn",
+      "PositionOffset": {
+        "X": 0,
+        "Y": 0,
+        "Z": 0
+      },
+      "InitialVelocity": {
+        "Pitch": {
+          "Min": 90,
+          "Max": 90
+        },
+        "Speed": {
+          "Min": 0.2,
+          "Max": 0.6
+        }
+      }
+    }
+  ]
+}

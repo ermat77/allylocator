@@ -263,6 +263,15 @@ public class FactionPermissionManager {
             factionCache.remove(memberUuid);
         }
         
+        // Also revoke known interaction permissions so LuckPerms is clean even for legacy members (not in cache)
+        currentPermissions.add(com.factioncore.util.PermissionUtil.FACTION_PERM_OPEN_CHEST);
+        currentPermissions.add(com.factioncore.util.PermissionUtil.FACTION_PERM_OPEN_DOOR);
+        currentPermissions.add(com.factioncore.util.PermissionUtil.FACTION_PERM_OPEN_BENCH);
+        currentPermissions.add(com.factioncore.util.PermissionUtil.FACTION_PERM_USE_CHAIR);
+        currentPermissions.add(com.factioncore.util.PermissionUtil.FACTION_PERM_USE_PORTAL);
+        currentPermissions.add(com.factioncore.util.PermissionUtil.FACTION_PERM_PLACE_BLOCK);
+        currentPermissions.add(com.factioncore.util.PermissionUtil.FACTION_PERM_BREAK_BLOCK);
+        
         ConfigUtil.debug("FactionPermissionManager.revokeAllFactionPermissions(): revoked all permissions from " + memberUuid + " in faction " + factionId);
         
         // Sync all revocations to LuckPerms asynchronously

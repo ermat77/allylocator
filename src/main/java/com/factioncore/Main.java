@@ -6,24 +6,38 @@ import com.factioncore.config.GeneralConfig;
 import com.factioncore.faction.FactionComponent;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.faction.FactionSystem;
+import com.factioncore.map.FactionWorldMapProvider;
+import com.hypixel.hytale.server.core.universe.world.worldmap.IWorldMap;
 import com.factioncore.systems.marker.FactionMarkerFilterSystem;
 import com.factioncore.systems.protection.BreakBlockProtectionSystem;
+import com.factioncore.systems.protection.DamageBlockProtectionSystem;
+import com.factioncore.systems.protection.GlobalBreakBlockProtectionSystem;
+import com.factioncore.systems.protection.GlobalDamageBlockProtectionSystem;
 import com.factioncore.systems.protection.PlaceBlockProtectionSystem;
 import com.factioncore.systems.protection.UseBlockProtectionSystem;
+import com.factioncore.systems.tick.ChunkBordersTickingSystem;
+import com.factioncore.systems.tick.TitleTickingSystem;
+import com.factioncore.systems.tick.WorldMapUpdateTickingSystem;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.PlayerNameCache;
 import com.hypixel.hytale.component.ComponentType;
+import com.hypixel.hytale.server.core.Constants;
 import com.hypixel.hytale.component.system.ISystem;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
+import com.hypixel.hytale.server.core.universe.world.events.AddWorldEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
 import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
+import com.hypixel.hytale.server.core.universe.Universe;
+import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.util.Config;
-import com.hypixel.hytale.server.core.Constants;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
 import java.util.logging.Level;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.nio.file.Files;
+import java.net.URI;
 import java.nio.file.StandardCopyOption;
 import java.io.File;
 import java.io.InputStream;
@@ -42,6 +56,9 @@ public class Main extends JavaPlugin {
     private ComponentType<EntityStore, FactionComponent> factionComponentType;
     private Config<ClaimConfig> claimConfig;
     private Config<GeneralConfig> generalConfig;
+    private final FactionWorldMapProvider worldMapProvider = new FactionWorldMapProvider();
+    /** Plugin data directory: same folder as the plugin JAR, then FactionCore (e.g. mods/FactionCore). */
+    private final Path pluginDataPath;
 
     /**
      * Creates a new Main plugin instance.
@@ -51,20 +68,42 @@ public class Main extends JavaPlugin {
     public Main(@NonNullDecl JavaPluginInit init) {
         super(init);
         pluginInstance = this;
-        
+        this.pluginDataPath = computePluginDataPath();
+
         // Register configs (must be called before setup)
         this.claimConfig = withConfig(ClaimConfig.CODEC);
-        
-        // GeneralConfig should be in universe/FactionCore/ to match other data files
-        // Use custom path instead of plugin data directory
-        Path generalConfigPath = Constants.UNIVERSE_PATH.resolve("FactionCore");
-        // Ensure directory exists
+
+        // GeneralConfig in plugin data folder (e.g. mods/FactionCore/config.json)
         try {
-            Files.createDirectories(generalConfigPath);
+            Files.createDirectories(pluginDataPath);
         } catch (Exception e) {
             // Directory might already exist, ignore
         }
-        this.generalConfig = new Config<>(generalConfigPath, "config", GeneralConfig.CODEC);
+        this.generalConfig = new Config<>(pluginDataPath, "config", GeneralConfig.CODEC);
+    }
+
+    /**
+     * Resolves the plugin data path: directory containing the plugin JAR, then "FactionCore".
+     * E.g. if the plugin is at mods/plugin.jar, returns mods/FactionCore.
+     */
+    private static Path computePluginDataPath() {
+        try {
+            URI location = Main.class.getProtectionDomain().getCodeSource().getLocation().toURI();
+            Path codeSourcePath = Paths.get(location);
+            Path baseDir = codeSourcePath.getFileName() != null && codeSourcePath.toString().toLowerCase().endsWith(".jar")
+                    ? codeSourcePath.getParent()
+                    : Paths.get(System.getProperty("user.dir"));
+            return baseDir != null ? baseDir.resolve("FactionCore") : Paths.get("FactionCore");
+        } catch (Exception e) {
+            return Paths.get(System.getProperty("user.dir", ".")).resolve("FactionCore");
+        }
+    }
+
+    /**
+     * Gets the plugin data directory (e.g. mods/FactionCore). Config and database are stored here.
+     */
+    public Path getPluginDataPath() {
+        return pluginDataPath;
     }
     
     /**
@@ -113,7 +152,7 @@ public class Main extends JavaPlugin {
         
         try {
             // Check if config file exists, if not, copy default from resources
-            Path configPath = Constants.UNIVERSE_PATH.resolve("FactionCore").resolve("config.json");
+            Path configPath = getPluginDataPath().resolve("config.json");
             File configFile = configPath.toFile();
             
             if (!configFile.exists()) {
@@ -141,9 +180,36 @@ public class Main extends JavaPlugin {
             try {
                 this.generalConfig.load().join();
                 this.generalConfig.save().join(); // Save to ensure file exists with defaults if needed
-                getLogger().at(Level.INFO).log("GeneralConfig loaded from universe/FactionCore/config.json");
+                getLogger().at(Level.INFO).log("GeneralConfig loaded from " + getPluginDataPath().resolve("config.json"));
             } catch (Exception e) {
-                getLogger().at(Level.WARNING).withCause(e).log("Failed to load/save GeneralConfig: " + e.getMessage());
+                Throwable cause = e instanceof java.util.concurrent.CompletionException ? e.getCause() : e;
+                if (cause instanceof java.io.IOException) {
+                    getLogger().at(Level.WARNING).withCause(e).log("Config file is invalid or corrupted (e.g. bad JSON). Replacing with default config.");
+                    try {
+                        Path recoveryPath = getPluginDataPath().resolve("config.json");
+                        if (recoveryPath.toFile().exists()) {
+                            Path backupPath = getPluginDataPath().resolve("config.json.bak");
+                            Files.copy(recoveryPath, backupPath, StandardCopyOption.REPLACE_EXISTING);
+                            getLogger().at(Level.INFO).log("Backed up bad config to " + backupPath.getFileName());
+                        }
+                        try (InputStream defaultStream = getClass().getClassLoader().getResourceAsStream("default_config.json")) {
+                            if (defaultStream != null) {
+                                Files.createDirectories(recoveryPath.getParent());
+                                Files.copy(defaultStream, recoveryPath, StandardCopyOption.REPLACE_EXISTING);
+                                this.generalConfig.load().join();
+                                this.generalConfig.save().join();
+                                getLogger().at(Level.INFO).log("GeneralConfig loaded from default config.");
+                            } else {
+                                throw new IllegalStateException("Default config not found in resources.", e);
+                            }
+                        }
+                    } catch (Exception recoverEx) {
+                        getLogger().at(Level.SEVERE).withCause(recoverEx).log("Failed to recover config. Please fix or remove config.json in FactionCore folder.");
+                        throw new IllegalStateException("Failed to load or recover GeneralConfig.", recoverEx);
+                    }
+                } else {
+                    getLogger().at(Level.WARNING).withCause(e).log("Failed to load/save GeneralConfig: " + e.getMessage());
+                }
             }
             
             // Now we can safely use ConfigUtil.debug() since config is loaded
@@ -162,7 +228,7 @@ public class Main extends JavaPlugin {
             ConfigUtil.getInstance();
             ConfigUtil.debug("ConfigUtil initialized");
             
-            // Log GeneralConfig values loaded from universe/FactionCore/config.json
+            // Log GeneralConfig values loaded from plugin data path
             logGeneralConfigValues();
             
             // Initialize FactionPermissionManager (after LuckPerms validation, before FactionManager)
@@ -195,10 +261,14 @@ public class Main extends JavaPlugin {
             getLogger().at(Level.INFO).log("FactionMarkerFilterSystem registered");
             ConfigUtil.debug("FactionMarkerFilterSystem registered");
             
-            // Register protection ECS systems
+            // Register protection ECS systems (order matches SimpleClaims: break then damage so both events are cancelled)
             getEntityStoreRegistry().registerSystem((ISystem) new BreakBlockProtectionSystem());
             getLogger().at(Level.INFO).log("BreakBlockProtectionSystem registered");
             ConfigUtil.debug("BreakBlockProtectionSystem registered");
+
+            getEntityStoreRegistry().registerSystem((ISystem) new DamageBlockProtectionSystem());
+            getLogger().at(Level.INFO).log("DamageBlockProtectionSystem registered");
+            ConfigUtil.debug("DamageBlockProtectionSystem registered");
             
             getEntityStoreRegistry().registerSystem((ISystem) new PlaceBlockProtectionSystem());
             getLogger().at(Level.INFO).log("PlaceBlockProtectionSystem registered");
@@ -207,6 +277,18 @@ public class Main extends JavaPlugin {
             getEntityStoreRegistry().registerSystem((ISystem) new UseBlockProtectionSystem());
             getLogger().at(Level.INFO).log("UseBlockProtectionSystem registered");
             ConfigUtil.debug("UseBlockProtectionSystem registered");
+
+            // Global (world-level) break/damage protection: explosions and non-player breaks (SimpleClaims-style)
+            getEntityStoreRegistry().registerSystem((ISystem) new GlobalDamageBlockProtectionSystem());
+            getEntityStoreRegistry().registerSystem((ISystem) new GlobalBreakBlockProtectionSystem());
+
+            // Tick systems (SimpleClaims-style: title, chunk border particles)
+            getEntityStoreRegistry().registerSystem((ISystem) new TitleTickingSystem());
+            getEntityStoreRegistry().registerSystem((ISystem) new ChunkBordersTickingSystem());
+
+            getChunkStoreRegistry().registerSystem(new WorldMapUpdateTickingSystem());
+            getLogger().at(Level.INFO).log("WorldMapUpdateTickingSystem registered");
+            ConfigUtil.debug("WorldMapUpdateTickingSystem registered");
             
             // Register faction command
             AbstractCommand factionCommand = new FactionCommand();
@@ -217,6 +299,15 @@ public class Main extends JavaPlugin {
             // Register event handlers
             registerEvents();
             ConfigUtil.debug("Event handlers registered");
+            
+            // Register world map provider codec
+            com.hypixel.hytale.server.core.universe.world.worldmap.provider.IWorldMapProvider.CODEC.register(
+                FactionWorldMapProvider.ID, 
+                FactionWorldMapProvider.class, 
+                FactionWorldMapProvider.CODEC
+            );
+            getLogger().at(Level.INFO).log("FactionWorldMapProvider registered");
+            ConfigUtil.debug("FactionWorldMapProvider registered");
             
             getLogger().at(Level.INFO).log("FactionCore plugin setup complete! Players will only see markers for faction members.");
             ConfigUtil.debug("Main.setup() completed successfully");
@@ -235,6 +326,92 @@ public class Main extends JavaPlugin {
     protected void start() {
         getLogger().at(Level.INFO).log("FactionCore plugin started! Players will only see markers for faction members.");
         ConfigUtil.debug("Main.start() called - plugin started");
+
+        // Load player UUID -> displayName from universe/players JSON (fallback for offline name lookup)
+        try {
+            Path playersDir = Constants.UNIVERSE_PATH.resolve("players");
+            int loaded = PlayerNameCache.loadFrom(playersDir);
+            getLogger().at(Level.INFO).log("[FactionCore] Player name cache: loaded " + loaded + " entries from universe/players");
+        } catch (Exception e) {
+            getLogger().at(Level.WARNING).withCause(e).log("[FactionCore] Failed to load player name cache: " + e.getMessage());
+        }
+
+        // Register world map provider for existing worlds
+        // Worlds load asynchronously, so we need to wait for them to be ready
+        try {
+            Universe universe = Universe.get();
+            if (universe == null) {
+                getLogger().at(Level.WARNING).log("[FactionCore] Universe is null, cannot register world map providers");
+                return;
+            }
+            
+            // Wait for worlds to finish loading asynchronously
+            universe.getUniverseReady().thenRun(() -> {
+                try {
+                    getLogger().at(Level.INFO).log("[FactionCore] Worlds are ready, registering world map providers for " + universe.getWorlds().size() + " worlds");
+                    
+                    for (World world : universe.getWorlds().values()) {
+                        getLogger().at(Level.INFO).log("[FactionCore] Processing world: " + (world != null ? world.getName() : "null"));
+                        tryRegisterWorldMapForWorld(world);
+                    }
+                } catch (Exception e) {
+                    getLogger().at(Level.WARNING).withCause(e).log("[FactionCore] Failed to register world map providers after worlds loaded: " + e.getMessage());
+                    ConfigUtil.debug("Failed to register world map providers after worlds loaded: " + e.getMessage(), e);
+                }
+            }).exceptionally(throwable -> {
+                getLogger().at(Level.WARNING).withCause(throwable).log("[FactionCore] Error waiting for worlds to load: " + throwable.getMessage());
+                ConfigUtil.debug("Error waiting for worlds to load: " + throwable.getMessage(), throwable);
+                return null;
+            });
+            
+            // Also try immediately in case worlds are already loaded
+            if (universe.getWorlds().size() > 0) {
+                getLogger().at(Level.INFO).log("[FactionCore] Worlds already available, registering immediately for " + universe.getWorlds().size() + " worlds");
+                registerWorldMapProviders(universe);
+            }
+        } catch (Exception e) {
+            getLogger().at(Level.WARNING).withCause(e).log("[FactionCore] Failed to set up world map provider registration: " + e.getMessage());
+            ConfigUtil.debug("Failed to set up world map provider registration: " + e.getMessage(), e);
+        }
+    }
+    
+    /**
+     * Tries to set the faction world map generator for the given world.
+     * Logs and returns false if WorldMapManager is null or registration fails.
+     */
+    private boolean tryRegisterWorldMapForWorld(World world) {
+        if (world == null) return false;
+        String worldName = world.getName();
+        if (world.getWorldMapManager() == null) {
+            getLogger().at(Level.WARNING).log("[FactionCore] WorldMapManager is null for world: " + worldName);
+            return false;
+        }
+        try {
+            getLogger().at(Level.INFO).log("[FactionCore] Setting generator for world: " + worldName);
+            IWorldMap generator = worldMapProvider.getGenerator(world);
+            if (generator != null) {
+                world.getWorldMapManager().setGenerator(generator);
+                getLogger().at(Level.INFO).log("[FactionCore] World map provider successfully registered for world: " + worldName);
+                ConfigUtil.debug("World map provider registered for world: " + worldName);
+                return true;
+            }
+            getLogger().at(Level.WARNING).log("[FactionCore] Generator is null for world: " + worldName);
+            return false;
+        } catch (Exception e) {
+            getLogger().at(Level.WARNING).withCause(e).log("[FactionCore] Failed to register world map provider for world " + worldName + ": " + e.getMessage());
+            ConfigUtil.debug("Failed to register world map provider for world " + worldName + ": " + e.getMessage(), e);
+            return false;
+        }
+    }
+
+    /**
+     * Helper method to register world map providers for all worlds in the universe.
+     */
+    private void registerWorldMapProviders(Universe universe) {
+        for (World world : universe.getWorlds().values()) {
+            getLogger().at(Level.INFO).log("[FactionCore] Processing world: " + (world != null ? world.getName() : "null"));
+            tryRegisterWorldMapForWorld(world);
+        }
     }
 
     /**
@@ -287,7 +464,7 @@ public class Main extends JavaPlugin {
     /**
      * Logs the GeneralConfig values loaded from the config file.
      * This verifies that debug, verboseDebug, and permissionsMode are correctly read
-     * from universe/FactionCore/config.json.
+     * from the plugin data path (e.g. mods/FactionCore/config.json).
      */
     private void logGeneralConfigValues() {
         try {
@@ -317,12 +494,12 @@ public class Main extends JavaPlugin {
                     getLogger().at(Level.INFO).log("[CONFIG] Config file size: " + configFile.length() + " bytes");
                 }
             } else {
-                getLogger().at(Level.INFO).log("[CONFIG] Expected config file location: universe/FactionCore/config.json");
+                getLogger().at(Level.INFO).log("[CONFIG] Expected config file location: " + getPluginDataPath().resolve("config.json"));
             }
             
             // Also check the expected location directly
             try {
-                Path expectedPath = Constants.UNIVERSE_PATH.resolve("FactionCore").resolve("config.json");
+                Path expectedPath = getPluginDataPath().resolve("config.json");
                 File expectedFile = expectedPath.toFile();
                 getLogger().at(Level.INFO).log("[CONFIG] Expected path exists: " + expectedFile.exists() + " at " + expectedPath.toAbsolutePath());
                 if (expectedFile.exists()) {
@@ -464,6 +641,23 @@ public class Main extends JavaPlugin {
                 }
             });
             ConfigUtil.debug("PlayerReadyEvent handler registered");
+            
+            // Register AddWorldEvent to register world map provider for new worlds
+            getEventRegistry().registerGlobal(AddWorldEvent.class, event -> {
+                try {
+                    if (event != null && event.getWorld() != null) {
+                        World world = event.getWorld();
+                        getLogger().at(Level.INFO).log("[FactionCore] AddWorldEvent received for world: " + world.getName());
+                        tryRegisterWorldMapForWorld(world);
+                    } else {
+                        getLogger().at(Level.WARNING).log("[FactionCore] AddWorldEvent has null event or world");
+                    }
+                } catch (Exception e) {
+                    getLogger().at(Level.WARNING).withCause(e).log("[FactionCore] Error handling AddWorldEvent: " + e.getMessage());
+                    ConfigUtil.debug("AddWorldEvent handler failed: " + e.getMessage(), e);
+                }
+            });
+            ConfigUtil.debug("AddWorldEvent handler registered");
         } catch (Exception e) {
             getLogger().at(Level.SEVERE).withCause(e).log("Error registering events: " + e.getMessage());
             ConfigUtil.debug("registerEvents() failed: " + e.getMessage(), e);

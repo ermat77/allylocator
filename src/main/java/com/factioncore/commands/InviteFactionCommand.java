@@ -3,6 +3,7 @@ package com.factioncore.commands;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -51,7 +52,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
         
         if (!(sender instanceof Player)) {
             ConfigUtil.debug("InviteFactionCommand: sender is not a Player");
-            commandContext.sendMessage(Message.raw("This command can only be used by players").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.players_only")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -60,7 +61,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
         
         if (ref == null || !ref.isValid()) {
             ConfigUtil.debug("InviteFactionCommand: player reference is invalid");
-            commandContext.sendMessage(Message.raw("You must be in a world to use this command").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.must_be_in_world")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -71,7 +72,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
             if (playerRef == null) {
                 ConfigUtil.debug("InviteFactionCommand: could not get PlayerRef");
-                commandContext.sendMessage(Message.raw("Error: Could not get player reference").color(Color.RED));
+                commandContext.sendMessage(Message.raw(I18n.get("chat.command.no_player_ref")).color(Color.RED));
                 return;
             }
             
@@ -84,7 +85,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
             if (faction == null) {
                 ConfigUtil.debug("InviteFactionCommand: player " + playerUuid + " is not in a faction");
-                commandContext.sendMessage(Message.raw("You must be in a faction to invite players")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.invite.must_be_in_faction"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -92,7 +93,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             // Check permission (owner always has permission)
             if (!PermissionUtil.canInviteMembersInFaction(playerUuid, faction)) {
                 ConfigUtil.debug("InviteFactionCommand: player " + playerUuid + " does not have permission to invite members");
-                commandContext.sendMessage(Message.raw("You don't have permission to invite members to this faction")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.invite.no_permission"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -103,7 +104,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             
             if (targetPlayerName == null || targetPlayerName.trim().isEmpty()) {
                 ConfigUtil.debug("InviteFactionCommand: target player name is empty");
-                commandContext.sendMessage(Message.raw("Player name cannot be empty")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.invite.name_empty"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -127,7 +128,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             
             if (targetPlayerRef == null) {
                 ConfigUtil.debug("InviteFactionCommand: player not found: " + targetPlayerName);
-                commandContext.sendMessage(Message.raw("Player doesn't exist")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.invite.player_not_found"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -139,7 +140,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             // Check if trying to invite self
             if (targetPlayerUuid.equals(playerUuid)) {
                 ConfigUtil.debug("InviteFactionCommand: cannot invite self");
-                commandContext.sendMessage(Message.raw("You cannot invite yourself to your faction")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.invite.cannot_invite_self"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -148,7 +149,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             FactionInfo targetFaction = factionManager.getFactionFromPlayer(targetPlayerUuid);
             if (targetFaction != null) {
                 ConfigUtil.debug("InviteFactionCommand: target player is already in a faction");
-                commandContext.sendMessage(Message.raw("Player '" + targetPlayerName + "' is already in a faction")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.invite.already_in_faction", targetPlayerName))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -163,7 +164,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             
             if (!success) {
                 ConfigUtil.debug("InviteFactionCommand: failed to send invite");
-                commandContext.sendMessage(Message.raw("Failed to send invite. The player may already have a pending invite from your faction.")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.invite.failed"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -171,7 +172,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
             ConfigUtil.debug("InviteFactionCommand: invite sent successfully");
             
             // Success message
-            commandContext.sendMessage(Message.raw("Invite sent to '" + targetPlayerName + "'!")
+            commandContext.sendMessage(Message.raw(I18n.get("chat.invite.sent", targetPlayerName))
                     .color(Color.GREEN).bold(true));
             
             // Notify target player if online
@@ -181,7 +182,7 @@ public class InviteFactionCommand extends AbstractAsyncCommand {
                     Player.getComponentType()
                 );
                 if (targetPlayer != null) {
-                    targetPlayer.sendMessage(Message.raw("You have been invited to join faction '" + faction.getName() + "' by " + inviterName)
+                    targetPlayer.sendMessage(Message.raw(I18n.get("chat.invite.target_message", faction.getName(), inviterName))
                             .color(Color.YELLOW).bold(true));
                 }
             } catch (Exception e) {

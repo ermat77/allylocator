@@ -87,28 +87,19 @@ public class FactionMarkerFilterService {
         // This predicate is called for each player marker to determine visibility
         tracker.setPlayerMapFilter(otherPlayerRef -> {
             if (otherPlayerRef == null) {
-                ConfigUtil.verboseDebug("FactionMarkerFilterService.filter: otherPlayerRef is null, hiding");
                 return false;
             }
-            
             UUID otherPlayerUuid = otherPlayerRef.getUuid();
-            
             // Always hide self
             if (viewerUuid.equals(otherPlayerUuid)) {
-                ConfigUtil.verboseDebug("FactionMarkerFilterService.filter: hiding self");
                 return false;
             }
-            
             // If viewer has no faction, hide all other players
             if (viewerFaction == null) {
-                ConfigUtil.verboseDebug("FactionMarkerFilterService.filter: viewer has no faction, hiding " + otherPlayerUuid);
                 return false;
             }
-            
             // Check if other player is in the same faction
-            boolean isVisible = viewerFaction.isOwnerOrMember(otherPlayerUuid);
-            ConfigUtil.verboseDebug("FactionMarkerFilterService.filter: player " + otherPlayerUuid + " visibility=" + isVisible);
-            return isVisible;
+            return viewerFaction.isOwnerOrMember(otherPlayerUuid);
         });
         
         ConfigUtil.verboseDebug("FactionMarkerFilterService.applyFilterToPlayer(): filter applied successfully");

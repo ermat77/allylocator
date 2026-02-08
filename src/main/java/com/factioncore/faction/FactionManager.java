@@ -3,15 +3,20 @@ package com.factioncore.faction;
 import com.hypixel.hytale.logger.HytaleLogger;
 import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.PermissionUtil;
+import com.factioncore.Main;
+import com.factioncore.config.ClaimConfig;
 import com.factioncore.config.GeneralConfig;
 import com.factioncore.claim.ChunkInfo;
 import com.factioncore.claim.tracking.ModifiedTracking;
 import com.factioncore.database.DatabaseManager;
+import com.factioncore.diplomacy.AllySettings;
+import com.factioncore.diplomacy.PendingAllyRequest;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.math.util.ChunkUtil;
-import com.factioncore.Main;
+import it.unimi.dsi.fastutil.longs.LongOpenHashSet;
+import it.unimi.dsi.fastutil.longs.LongSet;
 
 import java.time.LocalDateTime;
 import java.util.*;
@@ -34,7 +39,7 @@ import java.util.logging.Level;
  * DatabaseManager is ONLY used for persistence (save periodically, load on startup).
  * 
  * Following Hytale best practices, this is a singleton that manages all faction data.
- * Data is stored in the universe directory (not mods/) to keep it with world/server data.
+ * Data is stored in the plugin data folder (e.g. mods/FactionCore) next to the plugin JAR.
  */
 public class FactionManager {
     
@@ -51,9 +56,19 @@ public class FactionManager {
     // Chunk claiming system (in-memory)
     private final Map<String, Map<String, ChunkInfo>> chunks; // dimension -> (chunk key -> ChunkInfo)
     private final Map<UUID, Integer> factionClaimCounts;
-    
+
+    // World map cache invalidation queue (world name -> chunk indices to clear)
+    private final Map<String, LongSet> mapUpdateQueue;
+    private final Set<String> worldsNeedingUpdates;
+
     // Invite system (in-memory)
     private final Map<UUID, List<com.factioncore.invite.PendingInvite>> pendingInvites; // player UUID -> list of invites
+    
+    // Diplomacy (in-memory): factionId -> set of ally/enemy faction IDs; pending requests; ally settings
+    private final Map<UUID, Set<UUID>> factionAllies;
+    private final Map<UUID, Set<UUID>> factionEnemies;
+    private final List<PendingAllyRequest> pendingAllyRequests;
+    private final Map<String, AllySettings> allySettings; // key: factionId_allyFactionId
     
     // Database manager (ONLY for persistence)
     private final DatabaseManager databaseManager;
@@ -76,8 +91,14 @@ public class FactionManager {
         this.playerToFaction = new ConcurrentHashMap<>();
         this.chunks = new ConcurrentHashMap<>();
         this.factionClaimCounts = new ConcurrentHashMap<>();
+        this.mapUpdateQueue = new ConcurrentHashMap<>();
+        this.worldsNeedingUpdates = ConcurrentHashMap.newKeySet();
         this.pendingInvites = new ConcurrentHashMap<>();
-        
+        this.factionAllies = new ConcurrentHashMap<>();
+        this.factionEnemies = new ConcurrentHashMap<>();
+        this.pendingAllyRequests = Collections.synchronizedList(new ArrayList<>());
+        this.allySettings = new ConcurrentHashMap<>();
+
         // Initialize DatabaseManager (non-blocking - just creates instance)
         this.databaseManager = new DatabaseManager(getLogger());
         
@@ -121,7 +142,11 @@ public class FactionManager {
         return CompletableFuture.allOf(
             databaseManager.loadFactionsAsync().thenAccept(this::populateFactions),
             databaseManager.loadClaimsAsync().thenAccept(this::populateClaims),
-            databaseManager.loadPendingInvitesAsync().thenAccept(this::populateInvites)
+            databaseManager.loadPendingInvitesAsync().thenAccept(this::populateInvites),
+            databaseManager.loadFactionAlliesAsync().thenAccept(this::populateAllies),
+            databaseManager.loadFactionEnemiesAsync().thenAccept(this::populateEnemies),
+            databaseManager.loadPendingAllyRequestsAsync().thenAccept(this::populatePendingAllyRequests),
+            databaseManager.loadAllySettingsAsync().thenAccept(this::populateAllySettings)
         ).thenRun(() -> {
             ConfigUtil.debug("FactionManager: Async initialization completed");
             getLogger().at(Level.INFO).log("FactionManager initialized: " + factions.size() + " factions, " + 
@@ -172,6 +197,45 @@ public class FactionManager {
         ConfigUtil.debug("populateInvites: loading invites for " + loadedInvites.size() + " players");
         this.pendingInvites.putAll(loadedInvites);
         ConfigUtil.debug("populateInvites: populated " + pendingInvites.size() + " player invite lists");
+    }
+    
+    /**
+     * Populates faction allies from loaded data.
+     */
+    private void populateAllies(Map<UUID, Set<UUID>> loadedAllies) {
+        ConfigUtil.debug("populateAllies: loading allies for " + loadedAllies.size() + " factions");
+        for (Map.Entry<UUID, Set<UUID>> e : loadedAllies.entrySet()) {
+            factionAllies.put(e.getKey(), ConcurrentHashMap.newKeySet());
+            factionAllies.get(e.getKey()).addAll(e.getValue());
+        }
+    }
+    
+    /**
+     * Populates faction enemies from loaded data.
+     */
+    private void populateEnemies(Map<UUID, Set<UUID>> loadedEnemies) {
+        ConfigUtil.debug("populateEnemies: loading enemies for " + loadedEnemies.size() + " factions");
+        for (Map.Entry<UUID, Set<UUID>> e : loadedEnemies.entrySet()) {
+            factionEnemies.put(e.getKey(), ConcurrentHashMap.newKeySet());
+            factionEnemies.get(e.getKey()).addAll(e.getValue());
+        }
+    }
+    
+    /**
+     * Populates pending ally requests from loaded data.
+     */
+    private void populatePendingAllyRequests(List<PendingAllyRequest> loaded) {
+        ConfigUtil.debug("populatePendingAllyRequests: loading " + loaded.size() + " requests");
+        pendingAllyRequests.clear();
+        pendingAllyRequests.addAll(loaded);
+    }
+    
+    /**
+     * Populates ally settings from loaded data.
+     */
+    private void populateAllySettings(Map<String, AllySettings> loaded) {
+        ConfigUtil.debug("populateAllySettings: loading " + loaded.size() + " settings");
+        allySettings.putAll(loaded);
     }
     
     /**
@@ -310,25 +374,16 @@ public class FactionManager {
      * @return The FactionInfo, or null if player is not in a faction
      */
     public FactionInfo getFactionFromPlayer(UUID playerUuid) {
-        ConfigUtil.verboseDebug("getFactionFromPlayer called: playerUuid=" + playerUuid);
-        
         if (playerUuid == null) {
-            ConfigUtil.verboseDebug("getFactionFromPlayer: playerUuid is null, returning null");
             return null;
         }
         
         UUID factionId = playerToFaction.get(playerUuid);
-        ConfigUtil.verboseDebug("getFactionFromPlayer: playerToFaction lookup result=" + factionId);
-        
         if (factionId == null) {
-            ConfigUtil.verboseDebug("getFactionFromPlayer: no faction found for player " + playerUuid);
             return null;
         }
         
-        FactionInfo faction = factions.get(factionId);
-        ConfigUtil.verboseDebug("getFactionFromPlayer: faction lookup result=" + (faction != null ? faction.getName() : "null"));
-        
-        return faction;
+        return factions.get(factionId);
     }
     
     /**
@@ -338,17 +393,10 @@ public class FactionManager {
      * @return The FactionInfo, or null if not found
      */
     public FactionInfo getFactionById(UUID factionId) {
-        ConfigUtil.debug("getFactionById called: factionId=" + factionId);
-        
         if (factionId == null) {
-            ConfigUtil.debug("getFactionById: factionId is null, returning null");
             return null;
         }
-        
-        FactionInfo faction = factions.get(factionId);
-        ConfigUtil.debug("getFactionById: result=" + (faction != null ? faction.getName() : "null"));
-        
-        return faction;
+        return factions.get(factionId);
     }
     
     /**
@@ -409,6 +457,12 @@ public class FactionManager {
         faction.addMember(playerUuid);
         playerToFaction.put(playerUuid, factionId);
         ConfigUtil.debug("addPlayerToFaction: added player " + playerUuid + " to faction " + faction.getName());
+
+        // Apply default member interact permissions from config (factioncore.ownfaction.* with context faction=factionId)
+        applyDefaultMemberInteractPermissions(playerUuid, factionId);
+
+        // Apply ally permissions from every faction that has this faction as ally (context faction=that faction name)
+        com.factioncore.permission.AllyPermissionService.getInstance().applyAllyPermissionsFromFactionsToUser(playerUuid, factionId);
         
         // Clean up pending invites for the player (they now have a faction)
         clearPendingInvitesForPlayer(playerUuid);
@@ -421,6 +475,33 @@ public class FactionManager {
         ConfigUtil.debug("addPlayerToFaction: updated marker filters");
         
         return true;
+    }
+
+    /**
+     * Applies default member interaction permissions from ClaimConfig to a new member.
+     */
+    private void applyDefaultMemberInteractPermissions(UUID memberUuid, UUID factionId) {
+        com.factioncore.permission.FactionPermissionManager fpm = com.factioncore.permission.FactionPermissionManager.getInstance();
+        ClaimConfig config = null;
+        if (Main.get() != null && Main.get().getClaimConfig() != null) {
+            config = Main.get().getClaimConfig().get();
+        }
+        if (config == null) return;
+        grantOrRevoke(fpm, memberUuid, factionId, PermissionUtil.FACTION_PERM_OPEN_CHEST, config.isDefaultMemberCanInteractWithChest());
+        grantOrRevoke(fpm, memberUuid, factionId, PermissionUtil.FACTION_PERM_OPEN_DOOR, config.isDefaultMemberCanInteractWithDoor());
+        grantOrRevoke(fpm, memberUuid, factionId, PermissionUtil.FACTION_PERM_OPEN_BENCH, config.isDefaultMemberCanInteractWithBench());
+        grantOrRevoke(fpm, memberUuid, factionId, PermissionUtil.FACTION_PERM_USE_CHAIR, config.isDefaultMemberCanInteractWithChair());
+        grantOrRevoke(fpm, memberUuid, factionId, PermissionUtil.FACTION_PERM_USE_PORTAL, config.isDefaultMemberCanInteractWithPortal());
+        grantOrRevoke(fpm, memberUuid, factionId, PermissionUtil.FACTION_PERM_PLACE_BLOCK, config.isDefaultMemberCanPlaceBlock());
+        grantOrRevoke(fpm, memberUuid, factionId, PermissionUtil.FACTION_PERM_BREAK_BLOCK, config.isDefaultMemberCanBreakBlock());
+    }
+
+    private void grantOrRevoke(com.factioncore.permission.FactionPermissionManager fpm, UUID memberUuid, UUID factionId, String permission, boolean grant) {
+        if (grant) {
+            fpm.grantPermission(memberUuid, permission, factionId);
+        } else {
+            fpm.revokePermission(memberUuid, permission, factionId);
+        }
     }
     
     /**
@@ -447,8 +528,10 @@ public class FactionManager {
         
         FactionInfo faction = factions.get(factionId);
         if (faction != null) {
-            // Revoke all faction permissions for this player (cleanup)
+            // Revoke all own-faction permissions for this player (cleanup)
             com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(playerUuid, factionId);
+            // Revoke all ally permissions this player had (context faction=X for every faction X that had this faction as ally)
+            com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(playerUuid, factionId);
             
             // If player is the owner, disband the faction
             if (faction.isOwner(playerUuid)) {
@@ -521,10 +604,17 @@ public class FactionManager {
         // Revoke all faction permissions for all members (cleanup)
         for (UUID member : faction.getMembers()) {
             com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(member, factionId);
+            com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(member, factionId);
         }
         // Also revoke for owner
         if (faction.getOwner() != null) {
             com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(faction.getOwner(), factionId);
+            com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(faction.getOwner(), factionId);
+        }
+        // Revoke ally permissions for all members of factions that had this faction as ally (context faction=disbanded faction name)
+        com.factioncore.permission.AllyPermissionService aps = com.factioncore.permission.AllyPermissionService.getInstance();
+        for (UUID otherId : getFactionIdsThatHaveAsAlly(factionId)) {
+            aps.revokeAllyPermissionsForFaction(otherId, factionId);
         }
         
         // Remove all members from playerToFaction map
@@ -537,6 +627,22 @@ public class FactionManager {
         
         // Remove faction from map
         factions.remove(factionId);
+        
+        // Clean up diplomacy data for this faction
+        factionAllies.remove(factionId);
+        factionEnemies.remove(factionId);
+        for (UUID otherId : new HashSet<>(factionAllies.keySet())) {
+            Set<UUID> allies = factionAllies.get(otherId);
+            if (allies != null) {
+                allies.remove(factionId);
+                if (allies.isEmpty()) factionAllies.remove(otherId);
+            }
+        }
+        synchronized (pendingAllyRequests) {
+            pendingAllyRequests.removeIf(req ->
+                req.getRequesterFactionId().equals(factionId) || req.getTargetFactionId().equals(factionId));
+        }
+        allySettings.keySet().removeIf(key -> key.startsWith(factionId.toString() + "_") || key.endsWith("_" + factionId.toString()));
         
         // Delete from database (queued, async)
         databaseManager.deleteFaction(factionId);
@@ -569,10 +675,17 @@ public class FactionManager {
             // Revoke all faction permissions for all members (cleanup)
             for (UUID member : faction.getMembers()) {
                 com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(member, factionId);
+                com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(member, factionId);
             }
             // Also revoke for owner
             if (faction.getOwner() != null) {
                 com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(faction.getOwner(), factionId);
+                com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(faction.getOwner(), factionId);
+            }
+            // Revoke ally permissions for all members of factions that had this faction as ally
+            com.factioncore.permission.AllyPermissionService aps = com.factioncore.permission.AllyPermissionService.getInstance();
+            for (UUID otherId : getFactionIdsThatHaveAsAlly(factionId)) {
+                aps.revokeAllyPermissionsForFaction(otherId, factionId);
             }
             
             // Remove all members from playerToFaction map
@@ -582,6 +695,22 @@ public class FactionManager {
             // Remove owner
             playerToFaction.remove(faction.getOwner());
             ConfigUtil.debug("disbandFaction: removed all members from playerToFaction map");
+            
+            // Clean up diplomacy data for this faction
+            factionAllies.remove(factionId);
+            factionEnemies.remove(factionId);
+            for (UUID otherId : new HashSet<>(factionAllies.keySet())) {
+                Set<UUID> allies = factionAllies.get(otherId);
+                if (allies != null) {
+                    allies.remove(factionId);
+                    if (allies.isEmpty()) factionAllies.remove(otherId);
+                }
+            }
+            synchronized (pendingAllyRequests) {
+                pendingAllyRequests.removeIf(req ->
+                    req.getRequesterFactionId().equals(factionId) || req.getTargetFactionId().equals(factionId));
+            }
+            allySettings.keySet().removeIf(key -> key.startsWith(factionId.toString() + "_") || key.endsWith("_" + factionId.toString()));
             
             // Delete from database (queued, async)
             databaseManager.deleteFaction(factionId);
@@ -634,6 +763,199 @@ public class FactionManager {
         ConfigUtil.debug("saveFactions completed: queued " + factions.size() + " faction saves");
     }
     
+    // ========== Diplomacy Methods ==========
+    
+    /**
+     * Gets the set of enemy faction IDs for a faction (one-way: we declared them enemy).
+     */
+    public Set<UUID> getEnemies(UUID factionId) {
+        if (factionId == null) return Collections.emptySet();
+        Set<UUID> set = factionEnemies.get(factionId);
+        return set != null ? new HashSet<>(set) : Collections.emptySet();
+    }
+    
+    /**
+     * Gets the set of ally faction IDs for a faction (symmetric).
+     */
+    public Set<UUID> getAllies(UUID factionId) {
+        if (factionId == null) return Collections.emptySet();
+        Set<UUID> set = factionAllies.get(factionId);
+        return set != null ? new HashSet<>(set) : Collections.emptySet();
+    }
+    
+    /**
+     * Gets all pending ally requests involving the given faction (as requester or target).
+     * Caller can derive state: awaitingResponseFromOtherFaction when we are requester, awaitingResponseFromYourFaction when we are target.
+     */
+    public List<PendingAllyRequest> getPendingAllyRequestsForFaction(UUID factionId) {
+        if (factionId == null) return Collections.emptyList();
+        synchronized (pendingAllyRequests) {
+            List<PendingAllyRequest> result = new ArrayList<>();
+            for (PendingAllyRequest req : pendingAllyRequests) {
+                if (req.getRequesterFactionId().equals(factionId) || req.getTargetFactionId().equals(factionId)) {
+                    result.add(req);
+                }
+            }
+            return result;
+        }
+    }
+    
+    /**
+     * Sends an ally request from one faction to another. Returns false if already allies, already pending, or invalid.
+     */
+    public boolean sendAllyRequest(UUID fromFactionId, UUID toFactionId) {
+        if (fromFactionId == null || toFactionId == null || fromFactionId.equals(toFactionId)) return false;
+        if (getAllies(fromFactionId).contains(toFactionId)) return false;
+        synchronized (pendingAllyRequests) {
+            for (PendingAllyRequest req : pendingAllyRequests) {
+                if ((req.getRequesterFactionId().equals(fromFactionId) && req.getTargetFactionId().equals(toFactionId))
+                    || (req.getRequesterFactionId().equals(toFactionId) && req.getTargetFactionId().equals(fromFactionId))) {
+                    return false;
+                }
+            }
+            pendingAllyRequests.add(new PendingAllyRequest(fromFactionId, toFactionId, LocalDateTime.now().toString()));
+        }
+        markDirty();
+        return true;
+    }
+    
+    /**
+     * Accepts an ally request. Acceptor is the target faction; requester is the faction that sent the request. Adds each other as allies and removes the request.
+     */
+    public boolean acceptAllyRequest(UUID acceptorFactionId, UUID requesterFactionId) {
+        if (acceptorFactionId == null || requesterFactionId == null) return false;
+        PendingAllyRequest toRemove = null;
+        synchronized (pendingAllyRequests) {
+            for (PendingAllyRequest req : pendingAllyRequests) {
+                if (req.getRequesterFactionId().equals(requesterFactionId) && req.getTargetFactionId().equals(acceptorFactionId)) {
+                    toRemove = req;
+                    break;
+                }
+            }
+            if (toRemove == null) return false;
+            pendingAllyRequests.remove(toRemove);
+        }
+        factionAllies.computeIfAbsent(acceptorFactionId, k -> ConcurrentHashMap.newKeySet()).add(requesterFactionId);
+        factionAllies.computeIfAbsent(requesterFactionId, k -> ConcurrentHashMap.newKeySet()).add(acceptorFactionId);
+        markDirty();
+        // Apply default ally permissions (from current AllySettings, or empty = all false) to both factions' members
+        com.factioncore.permission.AllyPermissionService aps = com.factioncore.permission.AllyPermissionService.getInstance();
+        aps.syncAllyFactionMembers(acceptorFactionId, requesterFactionId, getAllySettings(acceptorFactionId, requesterFactionId));
+        aps.syncAllyFactionMembers(requesterFactionId, acceptorFactionId, getAllySettings(requesterFactionId, acceptorFactionId));
+        return true;
+    }
+
+    /**
+     * Removes an ally (breaks alliance both ways). Revokes ally permissions for all members of both factions.
+     */
+    public boolean removeAlly(UUID factionId, UUID allyFactionId) {
+        if (factionId == null || allyFactionId == null) return false;
+        Set<UUID> ourAllies = factionAllies.get(factionId);
+        Set<UUID> theirAllies = factionAllies.get(allyFactionId);
+        if (ourAllies == null || !ourAllies.remove(allyFactionId)) return false;
+        if (theirAllies != null) theirAllies.remove(factionId);
+        if (ourAllies.isEmpty()) factionAllies.remove(factionId);
+        if (theirAllies != null && theirAllies.isEmpty()) factionAllies.remove(allyFactionId);
+        allySettings.remove(factionId.toString() + "_" + allyFactionId.toString());
+        allySettings.remove(allyFactionId.toString() + "_" + factionId.toString());
+        markDirty();
+        com.factioncore.permission.AllyPermissionService aps = com.factioncore.permission.AllyPermissionService.getInstance();
+        aps.revokeAllyPermissionsForFaction(factionId, allyFactionId);
+        aps.revokeAllyPermissionsForFaction(allyFactionId, factionId);
+        return true;
+    }
+    
+    /**
+     * Declines an ally request (target faction declines the request from requester).
+     */
+    public boolean declineAllyRequest(UUID targetFactionId, UUID requesterFactionId) {
+        if (targetFactionId == null || requesterFactionId == null) return false;
+        boolean removed;
+        synchronized (pendingAllyRequests) {
+            removed = pendingAllyRequests.removeIf(req ->
+                req.getRequesterFactionId().equals(requesterFactionId) && req.getTargetFactionId().equals(targetFactionId));
+        }
+        if (removed) markDirty();
+        return removed;
+    }
+    
+    /**
+     * Cancels an ally request (requester cancels the request they sent to target).
+     */
+    public boolean cancelAllyRequest(UUID requesterFactionId, UUID targetFactionId) {
+        if (requesterFactionId == null || targetFactionId == null) return false;
+        synchronized (pendingAllyRequests) {
+            boolean removed = pendingAllyRequests.removeIf(req ->
+                req.getRequesterFactionId().equals(requesterFactionId) && req.getTargetFactionId().equals(targetFactionId));
+            if (removed) markDirty();
+            return removed;
+        }
+    }
+    
+    /**
+     * Adds an enemy (one-way: our faction declares the other as enemy).
+     */
+    public void addEnemy(UUID factionId, UUID enemyFactionId) {
+        if (factionId == null || enemyFactionId == null || factionId.equals(enemyFactionId)) return;
+        factionEnemies.computeIfAbsent(factionId, k -> ConcurrentHashMap.newKeySet()).add(enemyFactionId);
+        markDirty();
+    }
+    
+    /**
+     * Removes an enemy (one-way).
+     */
+    public void removeEnemy(UUID factionId, UUID enemyFactionId) {
+        if (factionId == null || enemyFactionId == null) return;
+        Set<UUID> set = factionEnemies.get(factionId);
+        if (set != null) {
+            set.remove(enemyFactionId);
+            if (set.isEmpty()) factionEnemies.remove(factionId);
+            markDirty();
+        }
+    }
+    
+    /**
+     * Gets ally settings for (our faction, ally faction). Returns default (false, false) if not set.
+     */
+    /**
+     * Returns faction IDs that have the given faction as ally (so we can grant ally perms to new members of that faction).
+     */
+    public Set<UUID> getFactionIdsThatHaveAsAlly(UUID allyFactionId) {
+        if (allyFactionId == null) return Set.of();
+        String suffix = "_" + allyFactionId.toString();
+        Set<UUID> out = new HashSet<>();
+        for (String key : allySettings.keySet()) {
+            if (!key.endsWith(suffix)) continue;
+            String ourIdStr = key.substring(0, key.length() - suffix.length());
+            try {
+                out.add(UUID.fromString(ourIdStr));
+            } catch (IllegalArgumentException ignored) { }
+        }
+        return out;
+    }
+
+    public AllySettings getAllySettings(UUID factionId, UUID allyFactionId) {
+        if (factionId == null || allyFactionId == null) return new AllySettings();
+        String key = factionId.toString() + "_" + allyFactionId.toString();
+        AllySettings s = allySettings.get(key);
+        return s != null ? s : new AllySettings();
+    }
+    
+    /**
+     * Sets ally settings for (our faction, ally faction).
+     */
+    public void setAllySettings(UUID factionId, UUID allyFactionId, AllySettings settings) {
+        if (factionId == null || allyFactionId == null || settings == null) return;
+        String key = factionId.toString() + "_" + allyFactionId.toString();
+        allySettings.put(key, new AllySettings(
+                settings.isSharePlayerMarkers(), settings.isAllowInteractionsInClaimedChunks(),
+                settings.isAllowOpenChest(), settings.isAllowOpenDoor(), settings.isAllowOpenBench(),
+                settings.isAllowUseChair(), settings.isAllowUsePortal(),
+                settings.isAllowPlaceBlock(), settings.isAllowBreakBlock()));
+        markDirty();
+        com.factioncore.permission.AllyPermissionService.getInstance().syncAllyFactionMembers(factionId, allyFactionId, settings);
+    }
+    
     // ========== Chunk Claiming Methods ==========
     
     /**
@@ -666,6 +988,12 @@ public class FactionManager {
                                     databaseManager.savePendingInvite(invite);
                                 }
                             }
+                            
+                            // Save diplomacy data
+                            databaseManager.saveAllFactionAllies(factionAllies);
+                            databaseManager.saveAllFactionEnemies(factionEnemies);
+                            databaseManager.saveAllPendingAllyRequests(new ArrayList<>(pendingAllyRequests));
+                            databaseManager.saveAllAllySettings(allySettings);
                             
                             ConfigUtil.debug("Periodic save: finished queuing all data saves");
                         }
@@ -807,7 +1135,67 @@ public class FactionManager {
     public void unclaimRawCoords(String dimension, int blockX, int blockZ) {
         unclaim(dimension, ChunkUtil.chunkCoordinate(blockX), ChunkUtil.chunkCoordinate(blockZ));
     }
-    
+
+    /**
+     * Queues world map cache invalidation for the given chunk and its neighbors.
+     * Processed by WorldMapUpdateTickingSystem using the public API
+     * (WorldMapManager.clearImagesInChunks + WorldMapTracker.clearChunks).
+     *
+     * @param world  the world
+     * @param chunkX chunk X coordinate
+     * @param chunkZ chunk Z coordinate
+     */
+    public void queueMapUpdate(World world, int chunkX, int chunkZ) {
+        if (world == null) return;
+        queueMapUpdate(world.getName(), chunkX, chunkZ);
+    }
+
+    /**
+     * Queues world map cache invalidation for the given chunk and its neighbors by dimension name.
+     * Use when no World reference is available (e.g. when invalidating all chunks for a faction after rename).
+     *
+     * @param dimension world/dimension name (key used by WorldMapUpdateTickingSystem)
+     * @param chunkX    chunk X coordinate
+     * @param chunkZ    chunk Z coordinate
+     */
+    public void queueMapUpdate(String dimension, int chunkX, int chunkZ) {
+        if (dimension == null || dimension.isEmpty()) return;
+        mapUpdateQueue.computeIfAbsent(dimension, k -> new LongOpenHashSet()).add(ChunkUtil.indexChunk(chunkX, chunkZ));
+        mapUpdateQueue.get(dimension).add(ChunkUtil.indexChunk(chunkX + 1, chunkZ));
+        mapUpdateQueue.get(dimension).add(ChunkUtil.indexChunk(chunkX - 1, chunkZ));
+        mapUpdateQueue.get(dimension).add(ChunkUtil.indexChunk(chunkX, chunkZ + 1));
+        mapUpdateQueue.get(dimension).add(ChunkUtil.indexChunk(chunkX, chunkZ - 1));
+        worldsNeedingUpdates.add(dimension);
+    }
+
+    /**
+     * Queues world map cache invalidation for every chunk claimed by the given faction.
+     * Call when faction data displayed on the map changes (e.g. faction name or color)
+     * so cached chunk images are cleared and regenerated with the new label.
+     *
+     * @param faction the faction whose claimed chunks should be invalidated
+     */
+    public void queueMapUpdateForFaction(FactionInfo faction) {
+        if (faction == null) return;
+        UUID factionId = faction.getId();
+        for (Map.Entry<String, Map<String, ChunkInfo>> entry : chunks.entrySet()) {
+            String dimension = entry.getKey();
+            for (ChunkInfo chunk : entry.getValue().values()) {
+                if (chunk.getFactionOwner().equals(factionId)) {
+                    queueMapUpdate(dimension, chunk.getChunkX(), chunk.getChunkZ());
+                }
+            }
+        }
+    }
+
+    public Map<String, LongSet> getMapUpdateQueue() {
+        return mapUpdateQueue;
+    }
+
+    public Set<String> getWorldsNeedingUpdates() {
+        return worldsNeedingUpdates;
+    }
+
     /**
      * Checks if a faction has enough claims left.
      * 
@@ -829,11 +1217,7 @@ public class FactionManager {
      * @return The maximum claim amount
      */
     private int getMaxClaimAmount(FactionInfo faction) {
-        Main main = Main.get();
-        if (main != null && main.getClaimConfig() != null) {
-            return main.getClaimConfig().get().getDefaultFactionClaimsAmount();
-        }
-        return 25; // Default
+        return faction.getMaxClaimAmount();
     }
     
     /**

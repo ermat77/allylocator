@@ -6,7 +6,7 @@ Group {
   LayoutMode: Top;
   Padding: (Full: 20);
 
-  Label {
+  Label #settingsTitleLabel {
     Text: "Faction Settings";
     Anchor: (Height: 45);
     Style: (

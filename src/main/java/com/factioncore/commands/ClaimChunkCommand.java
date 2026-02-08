@@ -3,7 +3,9 @@ package com.factioncore.commands;
 import com.factioncore.claim.ChunkInfo;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
+import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.GameMode;
@@ -40,7 +42,7 @@ public class ClaimChunkCommand extends AbstractAsyncCommand {
         CommandSender sender = commandContext.sender();
         
         if (!(sender instanceof Player)) {
-            commandContext.sendMessage(Message.raw("This command can only be used by players").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.players_only")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -48,7 +50,7 @@ public class ClaimChunkCommand extends AbstractAsyncCommand {
         Ref<EntityStore> ref = player.getReference();
         
         if (ref == null || !ref.isValid()) {
-            commandContext.sendMessage(Message.raw("You must be in a world to use this command").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.must_be_in_world")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -63,24 +65,24 @@ public class ClaimChunkCommand extends AbstractAsyncCommand {
             
             UUID playerUuid = playerRef.getUuid();
             
-            // Check permission
-            if (!PermissionUtil.canClaimChunk(playerUuid)) {
-                player.sendMessage(Message.raw("You don't have permission to claim chunks").color(Color.RED));
-                return;
-            }
-            
             FactionManager manager = FactionManager.getInstance();
-            
-            // Check if claiming is allowed in this dimension
-            if (!manager.canClaimInDimension(world)) {
-                player.sendMessage(Message.raw("You cannot claim chunks in this dimension").color(Color.RED));
-                return;
-            }
             
             // Get or create faction
             FactionInfo faction = manager.getFactionFromPlayer(playerRef.getUuid());
             if (faction == null) {
-                player.sendMessage(Message.raw("You must be in a faction to claim chunks. Use /f create <name> to create one.").color(Color.RED));
+                player.sendMessage(Message.raw(I18n.get("chat.claim.must_be_in_faction_create")).color(Color.RED));
+                return;
+            }
+            
+            // Check permission: owner or member with claim permission
+            if (!PermissionUtil.canClaimChunkInFaction(playerUuid, faction)) {
+                player.sendMessage(Message.raw(I18n.get("chat.claim.no_permission")).color(Color.RED));
+                return;
+            }
+            
+            // Check if claiming is allowed in this dimension
+            if (!manager.canClaimInDimension(world)) {
+                player.sendMessage(Message.raw(I18n.get("chat.claim.cannot_in_dimension")).color(Color.RED));
                 return;
             }
             
@@ -89,7 +91,7 @@ public class ClaimChunkCommand extends AbstractAsyncCommand {
             int blockZ = (int) playerRef.getTransform().getPosition().getZ();
             World playerWorld = player.getWorld();
             if (playerWorld == null) {
-                player.sendMessage(Message.raw("Error: Could not get world").color(Color.RED));
+                player.sendMessage(Message.raw(I18n.get("chat.claim.error_world")).color(Color.RED));
                 return;
             }
             String dimension = playerWorld.getName();
@@ -98,9 +100,9 @@ public class ClaimChunkCommand extends AbstractAsyncCommand {
             ChunkInfo existingChunk = manager.getChunkRawCoords(dimension, blockX, blockZ);
             if (existingChunk != null) {
                 if (existingChunk.getFactionOwner().equals(faction.getId())) {
-                    player.sendMessage(Message.raw("This chunk is already claimed by your faction").color(Color.YELLOW));
+                    player.sendMessage(Message.raw(I18n.get("chat.claim.already_claimed_self")).color(Color.YELLOW));
                 } else {
-                    player.sendMessage(Message.raw("This chunk is already claimed by another faction").color(Color.RED));
+                    player.sendMessage(Message.raw(I18n.get("chat.claim.already_claimed_other")).color(Color.RED));
                 }
                 return;
             }
@@ -109,13 +111,18 @@ public class ClaimChunkCommand extends AbstractAsyncCommand {
             if (!manager.hasEnoughClaimsLeft(faction)) {
                 int maxClaims = faction.getMaxClaimAmount();
                 int currentClaims = manager.getAmountOfClaims(faction);
-                player.sendMessage(Message.raw("You have reached your claim limit (" + currentClaims + "/" + maxClaims + ")").color(Color.RED));
+                player.sendMessage(Message.raw(I18n.get("chat.claim.limit_reached_alt", currentClaims, maxClaims)).color(Color.RED));
                 return;
             }
             
             // Claim the chunk
-            ChunkInfo chunkInfo = manager.claimChunkByRawCoords(dimension, blockX, blockZ, faction, player, playerRef);
-            player.sendMessage(Message.raw("Chunk claimed successfully! (" + manager.getAmountOfClaims(faction) + "/" + faction.getMaxClaimAmount() + " claims)").color(Color.GREEN));
+            manager.claimChunkByRawCoords(dimension, blockX, blockZ, faction, player, playerRef);
+            player.sendMessage(Message.raw(I18n.get("chat.claim.success_counts", manager.getAmountOfClaims(faction), faction.getMaxClaimAmount())).color(Color.GREEN));
+
+            // Queue world map cache invalidation (processed by WorldMapUpdateTickingSystem)
+            int chunkX = ChunkUtil.chunkCoordinate(blockX);
+            int chunkZ = ChunkUtil.chunkCoordinate(blockZ);
+            FactionManager.getInstance().queueMapUpdate(world, chunkX, chunkZ);
         }, (Executor) world);
     }
 }

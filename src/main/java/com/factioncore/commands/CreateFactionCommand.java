@@ -3,6 +3,7 @@ package com.factioncore.commands;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -50,7 +51,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
         
         if (!(sender instanceof Player)) {
             ConfigUtil.debug("CreateFactionCommand: sender is not a Player");
-            commandContext.sendMessage(Message.raw("This command can only be used by players").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.players_only")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -59,7 +60,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
         
         if (ref == null || !ref.isValid()) {
             ConfigUtil.debug("CreateFactionCommand: player reference is invalid");
-            commandContext.sendMessage(Message.raw("You must be in a world to use this command").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.must_be_in_world")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -70,7 +71,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
             PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
             if (playerRef == null) {
                 ConfigUtil.debug("CreateFactionCommand: could not get PlayerRef");
-                commandContext.sendMessage(Message.raw("Error: Could not get player reference").color(Color.RED));
+                commandContext.sendMessage(Message.raw(I18n.get("chat.command.no_player_ref")).color(Color.RED));
                 return;
             }
             
@@ -80,7 +81,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
             // Check permission
             if (!PermissionUtil.canCreateFaction(playerUuid)) {
                 ConfigUtil.debug("CreateFactionCommand: player " + playerUuid + " does not have permission");
-                commandContext.sendMessage(Message.raw("You don't have permission to create factions")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.create.no_permission"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -91,7 +92,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
             FactionInfo existingFaction = factionManager.getFactionFromPlayer(playerUuid);
             if (existingFaction != null) {
                 ConfigUtil.debug("CreateFactionCommand: player " + playerUuid + " is already in faction " + existingFaction.getName());
-                commandContext.sendMessage(Message.raw("You are already in a faction: " + existingFaction.getName())
+                commandContext.sendMessage(Message.raw(I18n.get("chat.create.already_in_faction", existingFaction.getName()))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -102,7 +103,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
             
             if (factionName == null || factionName.trim().isEmpty()) {
                 ConfigUtil.debug("CreateFactionCommand: faction name is empty");
-                commandContext.sendMessage(Message.raw("Faction name cannot be empty")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.create.name_empty"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -111,7 +112,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
             int maxLength = FactionManager.getMaxFactionNameLength();
             if (trimmedName.length() > maxLength) {
                 ConfigUtil.debug("CreateFactionCommand: faction name exceeds maximum length");
-                commandContext.sendMessage(Message.raw("Faction name cannot exceed " + maxLength + " characters")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.create.name_too_long", maxLength))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -120,7 +121,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
             FactionInfo faction = factionManager.createFaction(trimmedName, playerUuid);
             if (faction == null) {
                 ConfigUtil.debug("CreateFactionCommand: failed to create faction");
-                commandContext.sendMessage(Message.raw("Failed to create faction. The name might already be taken.")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.create.failed"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -128,7 +129,7 @@ public class CreateFactionCommand extends AbstractAsyncCommand {
             ConfigUtil.debug("CreateFactionCommand: faction created successfully: " + faction.getName() + " (ID: " + faction.getId() + ")");
             
             // Success message
-            commandContext.sendMessage(Message.raw("Faction '" + faction.getName() + "' created successfully!")
+            commandContext.sendMessage(Message.raw(I18n.get("chat.create.success", faction.getName()))
                     .color(Color.GREEN).bold(true));
         }, (Executor) world);
     }

@@ -291,11 +291,10 @@ public class FactionInfo {
     /**
      * Gets the maximum claim amount for this faction.
      * Reads from config via FactionManager.
-     * 
+     *
      * @return The maximum number of chunks this faction can claim
      */
     public int getMaxClaimAmount() {
-        // Delegate to FactionManager which has access to config
         com.factioncore.Main main = com.factioncore.Main.get();
         if (main != null && main.getClaimConfig() != null) {
             return main.getClaimConfig().get().getDefaultFactionClaimsAmount();

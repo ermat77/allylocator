@@ -1,0 +1,76 @@
+$C = "../Common.ui";
+
+$C.@PageOverlay {
+
+  $C.@DecoratedContainer {
+    Anchor: (Width: 600, Height: 669);
+
+    #Title {
+      Group {
+        $C.@Title #TitleText {
+          @Text = "Nearby Claimed Chunks";
+        }
+      }
+    }
+
+    #Content {
+      LayoutMode: Left;
+
+      Group #Main {
+        LayoutMode: Top;
+
+        Group {
+          LayoutMode: Left;
+
+          Group #ClaimedChunksInfo {
+            LayoutMode: Left;
+            Anchor: (Top: 0, Left: 10, Bottom: 10);
+            Label #ClaimedChunksLabel {
+              Text: "Claimed Chunks: ";
+              Style: (
+                TextColor: #93844c(1)
+              );
+            }
+            Label #ClaimedChunksCount {
+              Text: "0";
+            }
+            Label  {
+              Text: "/";
+              Style: (
+                TextColor: #93844c(1)
+              );
+            }
+            Label #MaxChunksCount {
+              Text: "25";
+            }
+          }
+        }
+
+        Group #ChunkInfo {
+          FlexWeight: 1;
+          LayoutMode: TopScrolling;
+          Padding: (Left: 10);
+          ScrollbarStyle: $C.@DefaultScrollbarStyle;
+
+          Group #ChunkSection {
+            Anchor: (Bottom: 10);
+            LayoutMode: Top;
+            Visible: true;
+
+            Group #ChunkCards {
+              LayoutMode: Top;
+            }
+        }
+      }
+
+      }
+
+      
+
+      
+
+    }
+  }
+}
+
+$C.@BackButton {}

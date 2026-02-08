@@ -6,7 +6,7 @@ Group {
   LayoutMode: Top;
   Padding: (Full: 20);
 
-  Label {
+  Label #factionTitleLabel {
     Text: "Faction";
     Anchor: (Height: 45);
     Style: (

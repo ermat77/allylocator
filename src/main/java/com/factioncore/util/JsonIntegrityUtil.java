@@ -1,5 +1,6 @@
 package com.factioncore.util;
 
+import com.factioncore.Main;
 import com.factioncore.faction.FactionInfo;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -7,7 +8,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonParser;
 import com.google.gson.reflect.TypeToken;
 import com.hypixel.hytale.logger.HytaleLogger;
-import com.hypixel.hytale.server.core.Constants;
 
 import java.io.File;
 import java.io.FileReader;
@@ -100,8 +100,10 @@ public class JsonIntegrityUtil {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         
-        // Use Constants.UNIVERSE_PATH like hyfaction does
-        Path basePath = Constants.UNIVERSE_PATH.resolve("FactionCore");
+        Path basePath = Main.get() != null ? Main.get().getPluginDataPath() : null;
+        if (basePath == null) {
+            return new IntegrityResult(true, errors, warnings);
+        }
         Path factionDataPath = basePath.resolve("real_faction.json");
         File factionDataFile = factionDataPath.toFile();
         
@@ -264,8 +266,10 @@ public class JsonIntegrityUtil {
         List<String> errors = new ArrayList<>();
         List<String> warnings = new ArrayList<>();
         
-        // Use Constants.UNIVERSE_PATH like hyfaction does
-        Path basePath = Constants.UNIVERSE_PATH.resolve("FactionCore");
+        Path basePath = Main.get() != null ? Main.get().getPluginDataPath() : null;
+        if (basePath == null) {
+            return new IntegrityResult(true, errors, warnings);
+        }
         Path configPath = basePath.resolve("config.json");
         File configFile = configPath.toFile();
         

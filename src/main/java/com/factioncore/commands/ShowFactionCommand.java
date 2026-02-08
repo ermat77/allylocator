@@ -2,6 +2,7 @@ package com.factioncore.commands;
 
 import com.factioncore.ui.FactionShowPage;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -44,7 +45,7 @@ public class ShowFactionCommand extends AbstractAsyncCommand {
         
         if (!(sender instanceof Player)) {
             ConfigUtil.debug("ShowFactionCommand: sender is not a Player");
-            commandContext.sendMessage(Message.raw("This command can only be used by players").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.players_only")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -74,7 +75,7 @@ public class ShowFactionCommand extends AbstractAsyncCommand {
             // Check permission
             if (!PermissionUtil.canShowFaction(playerUuid)) {
                 ConfigUtil.debug("ShowFactionCommand: player " + playerUuid + " does not have permission");
-                commandContext.sendMessage(Message.raw("You don't have permission to view faction information")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.show.no_permission"))
                         .color(Color.RED).bold(true));
                 return;
             }

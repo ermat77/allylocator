@@ -17,6 +17,8 @@
 13. [Performance Considerations](#performance-considerations)
 14. [Extension Points](#extension-points)
 15. [File Storage Best Practices](#file-storage-best-practices)
+16. [World Map Integration](#world-map-integration)
+17. [UI System](#ui-system)
 
 ---
 
@@ -27,6 +29,8 @@ FactionCore is a Hytale server plugin implementing a faction system with map mar
 **Key Features:**
 - Faction creation, membership management
 - Chunk claiming and protection system
+- Interactive chunk visualizer UI with click-to-claim functionality
+- World map integration showing claimed chunks with faction colors
 - SQLite database persistence (with in-memory caching for fast lookups)
 - Map marker filtering (faction-only visibility)
 - ECS-based architecture
@@ -742,6 +746,84 @@ Periodic Saves:
 - Worlds with `isDeleteOnRemove()` enabled (temporary worlds)
 - Worlds containing "Gaia_Temple" in name
 - Worlds in blacklist array
+
+### Chunk Visualizer UI
+
+**Location**: `com.factioncore.ui.ChunkVisualizerPage`
+
+**Purpose**: Interactive UI for visualizing and claiming/unclaiming chunks in a grid layout around the player's position
+
+**Architecture**:
+```
+Player clicks "CLAIM" button in FactionShowPage
+    ↓
+FactionShowPage.handleDataEvent() → "claim" action
+    ├─ Get player's current chunk coordinates
+    ├─ Get world dimension
+    └─ Open ChunkVisualizerPage
+        ↓
+ChunkVisualizerPage.build()
+    ├─ Load UI template (Pages/ChunkVisualizer.ui)
+    ├─ Get grid radius from ClaimConfig
+    ├─ Build grid of chunk squares (configurable size)
+    ├─ For each chunk:
+    │   ├─ Check if claimed (get ChunkInfo from FactionManager)
+    │   ├─ If claimed: Show faction color, tooltip with owner info
+    │   ├─ If unclaimed: Show wilderness, tooltip with claim hint
+    │   └─ Bind click events (left-click to claim, right-click to unclaim)
+    └─ Update claim count display
+        ↓
+Player clicks chunk square
+    ↓
+ChunkVisualizerPage.handleDataEvent()
+    ├─ Parse ChunkVisualizerData (action, chunkX, chunkZ)
+    ├─ If "Claim": Validate and claim chunk
+    └─ If "Unclaim": Validate and unclaim chunk
+        ↓
+Refresh UI to show updated state
+```
+
+**Key Features**:
+- **Configurable Grid Size**: Grid radius configurable via `ClaimConfig.chunkVisualizerGridRadius` (default: 8, creates 17x17 grid)
+- **Dynamic Grid Building**: Grid is built dynamically based on player's current chunk position
+- **Visual Feedback**: 
+  - Center chunk marked with "+" symbol
+  - Claimed chunks show faction color overlay (semi-transparent)
+  - Unclaimed chunks show wilderness (green tint)
+  - Tooltips show owner info for claimed chunks, claim hints for unclaimed
+- **Click-to-Claim**: Left-click unclaimed chunks to claim, right-click owned chunks to unclaim
+- **Real-time Updates**: UI refreshes after claim/unclaim operations
+
+**UI Components**:
+- `ChunkVisualizer.ui`: Main page layout with scrollable grid container
+- `ChunkEntry.ui`: Reusable chunk square button component (32x32 pixels)
+
+**Event Data Structure**:
+```java
+public static class ChunkVisualizerData {
+    private String action;      // "Claim" or "Unclaim"
+    private Integer chunkX;     // Chunk X coordinate
+    private Integer chunkZ;     // Chunk Z coordinate
+    
+    // Uses BuilderCodec for type-safe serialization
+    public static final BuilderCodec<ChunkVisualizerData> CODEC = ...;
+}
+```
+
+**Best Practices**:
+1. **Clear Before Append**: Always call `uiCommandBuilder.clear("#ChunkCards")` before rebuilding grid to prevent UI element accumulation
+2. **Index-Based Selectors**: Use array-style selectors `#ChunkCards[z][x]` for grid elements
+3. **Structured Event Data**: Use typed `EventData` with separate fields instead of string parsing
+4. **Refresh After Actions**: Call `refreshPage()` after claim/unclaim to update UI state
+5. **Configurable Grid**: Read grid size from config to allow server customization
+
+**Integration with FactionShowPage**:
+- "CLAIM" button in `FactionShowPage` opens `ChunkVisualizerPage`
+- Button only visible/enabled if player is in a faction
+- Passes player's current chunk coordinates and dimension to visualizer
+
+**Configuration**:
+- `ClaimConfig.chunkVisualizerGridRadius` (int, default: 8): Grid radius in chunks (creates (radius*2+1) x (radius*2+1) grid)
 
 ---
 
@@ -1459,16 +1541,16 @@ Check LuckPerms API (REQUIRED)
 - `canKickMembersInFaction(UUID playerUuid, FactionInfo faction)`: Check if player is owner, has admin permission, or has `faction.kick_members`
 
 **Plugin Permission Constants**:
-- `PERM_CREATE_FACTION = "factioncore.create_faction"` - Create a new faction
-- `PERM_SHOW_FACTION = "factioncore.show"` - View faction information UI
-- `PERM_CLAIM_CHUNK = "factioncore.claim"` - Claim chunks
-- `PERM_UNCLAIM_CHUNK = "factioncore.unclaim"` - Unclaim chunks
-- `PERM_CLAIM_INFO = "factioncore.claiminfo"` - View chunk claim information
-- `PERM_RENAME_FACTION = "factioncore.rename"` - Rename faction (plugin permission, not used for faction inner permissions)
-- `PERM_CHANGE_COLOR = "factioncore.color"` - Change faction color (plugin permission, not used for faction inner permissions)
-- `PERM_DISBAND_FACTION = "factioncore.disband"` - Disband faction (owner only)
-- `PERM_SETTINGS = "factioncore.settings"` - Access faction settings
-- `PERM_VIEW_MEMBERS = "factioncore.members"` - View faction members list
+- `PERM_CREATE_FACTION = "factioncore.player.create_faction"` - Create a new faction
+- `PERM_SHOW_FACTION = "factioncore.player.show"` - View faction information UI
+- `PERM_CLAIM_CHUNK = "factioncore.player.claim"` - Claim chunks
+- `PERM_UNCLAIM_CHUNK = "factioncore.player.unclaim"` - Unclaim chunks
+- `PERM_CLAIM_INFO = "factioncore.player.claiminfo"` - View chunk claim information
+- `PERM_RENAME_FACTION = "factioncore.player.rename"` - Rename faction (plugin permission, not used for faction inner permissions)
+- `PERM_CHANGE_COLOR = "factioncore.player.color"` - Change faction color (plugin permission, not used for faction inner permissions)
+- `PERM_DISBAND_FACTION = "factioncore.player.disband"` - Disband faction (owner only)
+- `PERM_SETTINGS = "factioncore.player.settings"` - Access faction settings
+- `PERM_VIEW_MEMBERS = "factioncore.player.members"` - View faction members list
 
 **Admin Permission Constants** (for actions on ANY faction, grouped under `factioncore.admin.*` for wildcard support):
 - `PERM_ADMIN_RENAME = "factioncore.admin.rename"` - Rename any faction
@@ -1619,7 +1701,7 @@ PermissionUtil.canRenameFactionInFaction() checks:
 ```
 
 **Permission Types**:
-- **Plugin Permissions**: Global permissions managed via LuckPerms/Hytale permissions.json (e.g., `factioncore.create_faction`)
+- **Plugin Permissions**: Global permissions managed via LuckPerms/Hytale permissions.json (e.g., `factioncore.player.create_faction` or `factioncore.player.*`)
 - **Faction Member Permissions**: Granular permissions granted by faction owner (e.g., `faction.rename`, `faction.change_color`)
 
 **Key Design Principles**:
@@ -1687,24 +1769,24 @@ if (isOwner || hasAdminPermission || hasMemberPermission) {
 ### Permission List
 
 **Command Permissions**:
-- `factioncore.create_faction` - Required for `/f create` command
-- `factioncore.show` - Required for `/f show` command (available to everyone by default)
-- `factioncore.claim` - Required for `/f claim` command
-- `factioncore.unclaim` - Required for `/f unclaim` command
-- `factioncore.claiminfo` - Required for `/f claiminfo` command
+- `factioncore.player.create_faction` - Required for `/f create` command
+- `factioncore.player.show` - Required for `/f show` command (available to everyone by default)
+- `factioncore.player.claim` - Required for `/f claim` command
+- `factioncore.player.unclaim` - Required for `/f unclaim` command
+- `factioncore.player.claiminfo` - Required for `/f claiminfo` command
 
 **UI Action Permissions**:
-- `factioncore.create_faction` - Required to create faction via UI
-- `factioncore.settings` - Required to access faction settings page (owner only)
-- `factioncore.members` - Required to view faction members page
-- `factioncore.rename` - Required to rename faction (owner only)
-- `factioncore.color` - Required to change faction color (owner only)
-- `factioncore.disband` - Required to disband faction (owner only)
+- `factioncore.player.create_faction` - Required to create faction via UI
+- `factioncore.player.settings` - Required to access faction settings page (owner only)
+- `factioncore.player.members` - Required to view faction members page
+- `factioncore.player.rename` - Required to rename faction (owner only)
+- `factioncore.player.color` - Required to change faction color (owner only)
+- `factioncore.player.disband` - Required to disband faction (owner only)
 
 **Wildcard Support**:
 - `factioncore.*` - Grants all FactionCore permissions
 - `factioncore.admin.*` - Grants all admin permissions (allows actions on ANY faction)
-- `factioncore.claim.*` - Grants all claim-related permissions (claim, unclaim, claiminfo)
+- `factioncore.player.*` - Grants all player permissions (create_faction, show, claim, unclaim, claiminfo, rename, color, disband, settings, members)
 
 ### Usage Example
 
@@ -1737,16 +1819,16 @@ if (PermissionUtil.canRenameFactionInFaction(playerUuid, faction)) {
 All commands and UI actions now enforce permissions:
 
 **Commands**:
-- `/f create` - Checks `factioncore.create_faction`
-- `/f show` - Checks `factioncore.show` (available to everyone by default)
-- `/f claim` - Checks `factioncore.claim`
-- `/f unclaim` - Checks `factioncore.unclaim`
-- `/f claiminfo` - Checks `factioncore.claiminfo`
+- `/f create` - Checks `factioncore.player.create_faction`
+- `/f show` - Checks `factioncore.player.show` (available to everyone by default)
+- `/f claim` - Checks `factioncore.player.claim`
+- `/f unclaim` - Checks `factioncore.player.unclaim`
+- `/f claiminfo` - Checks `factioncore.player.claiminfo`
 
 **UI Actions**:
-- Create faction (via UI) - Checks `factioncore.create_faction`
+- Create faction (via UI) - Checks `factioncore.player.create_faction`
 - Open settings - All members can access (controls disabled based on permissions)
-- View members - Checks `factioncore.members`
+- View members - Checks `factioncore.player.members`
 - Rename faction - Checks: owner OR `factioncore.admin.rename`/`factioncore.admin.*` OR `faction.rename` (owner-granted)
 - Change color - Checks: owner OR `factioncore.admin.changeColor`/`factioncore.admin.*` OR `faction.change_color` (owner-granted)
 - Disband faction - Checks: owner OR `factioncore.admin.disband`/`factioncore.admin.*`
@@ -2207,7 +2289,7 @@ getEntityStoreRegistry().registerSystem(new FactionChatSystem());
 - Check JSON format - supports both nested `{"groups": [...]}` and direct `[...]` formats
 - Verify UUID matches exactly (case-sensitive)
 - Check group name spelling (case-sensitive)
-- Check permission node spelling (`factioncore.create_faction`)
+- Check permission node spelling (`factioncore.player.create_faction`)
 - Look for debug logs showing: "parsed user ... with groups: [...]"
 
 **Permission Check Returns False**:
@@ -2306,6 +2388,448 @@ this.generalConfig.save().join(); // Creates file with defaults if missing
 
 ---
 
+## World Map Integration
+
+### Overview
+
+FactionCore integrates with Hytale's world map system to visualize claimed chunks on the world map. Claimed chunks are rendered with faction colors and borders, making it easy to see faction territories at a glance.
+
+### Architecture
+
+```
+World Map Request
+    ↓
+FactionWorldMapProvider.getGenerator()
+    └─ Returns FactionChunkWorldMap.INSTANCE
+        ↓
+FactionChunkWorldMap.generate()
+    ├─ For each chunk to generate:
+    │   └─ FactionImageBuilder.build()
+    │       ├─ Fetch chunk data from world
+    │       ├─ Sample block heights, fluids, environments
+    │       ├─ Get faction info for chunk
+    │       ├─ Apply faction color overlay
+    │       ├─ Draw borders for adjacent chunks
+    │       └─ Optionally draw faction name
+    │       ↓
+    └─ Combine all chunk images into WorldMap
+        ↓
+Display on world map UI
+```
+
+### Core Components
+
+#### FactionWorldMapProvider
+
+**Location**: `com.factioncore.map.FactionWorldMapProvider`
+
+**Purpose**: Implements `IWorldMapProvider` to register custom world map generation
+
+**Registration**:
+- Registered in `Main.setup()` via `IWorldMapProvider.CODEC.register()`
+- Applied to existing worlds in `Main.start()` via `Universe.getUniverseReady()` (waits for async world loading)
+- Applied to new worlds via `AddWorldEvent` handler
+
+**Key Methods**:
+- `getGenerator(World world)`: Returns `FactionChunkWorldMap.INSTANCE` for all worlds
+- Logs when called for debugging purposes
+
+#### FactionChunkWorldMap
+
+**Location**: `com.factioncore.map.FactionChunkWorldMap`
+
+**Purpose**: Implements `IWorldMap` to generate map images for claimed chunks
+
+**Key Features**:
+- Delegates to `FactionImageBuilder` for individual chunk rendering
+- Combines multiple chunk images into a `WorldMap`
+- Uses `CompletableFuture` for async image generation
+- No custom points of interest (returns empty map)
+- Comprehensive logging for debugging map generation
+
+**Methods**:
+- `generate(World world, int imageWidth, int imageHeight, LongSet chunksToGenerate)`: Generates map images for specified chunks
+  - Logs when called (world name, chunk count, image dimensions)
+  - Logs completion status (successful chunks count)
+- `generatePointsOfInterest(World world)`: Returns empty map (no custom POIs)
+- `getWorldMapSettings()`: Returns settings from `ChunkWorldMap.INSTANCE`
+
+#### FactionImageBuilder
+
+**Location**: `com.factioncore.map.FactionImageBuilder`
+
+**Purpose**: Handles low-level rendering of individual chunk images with faction overlays
+
+**Rendering Process**:
+1. **Chunk Data Fetching**: 
+   - Fetches `WorldChunk` and `ChunkColumn` data asynchronously
+   - Samples neighbor chunks for height calculations
+   - Loads fluid sections for water rendering
+
+2. **Block Sampling**:
+   - Samples block heights, tints, and types across chunk
+   - Calculates shading from height differences
+   - Applies biome tints and fluid colors
+
+3. **Faction Overlay**:
+   - Gets dimension name (tries `worldChunk.getWorld().getName()` first, falls back to `world.getName()`)
+   - Gets `FactionInfo` for chunk from `FactionManager`
+   - Validates faction color is not zero (invisible)
+   - Checks adjacent chunks for border detection (with null safety)
+   - Applies faction color overlay (60% opacity for interior, 85% for borders)
+   - Wrapped in try-catch to prevent silent failures
+   - Optionally draws faction name text on chunk
+
+4. **Image Generation**:
+   - Combines all samples into final `MapImage`
+   - Applies shading and lighting
+   - Returns completed image for world map
+
+**Key Methods**:
+- `build(long index, int imageWidth, int imageHeight, World world)`: Main entry point for async image building
+- `fetchChunk()`: Fetches chunk data from world
+- `sampleNeighborsSync()`: Samples neighbor chunks for height calculations
+- `generateImageAsync()`: Generates final image with faction overlays
+  - Handles dimension name resolution (tries multiple methods)
+  - Comprehensive debug logging (dimension, chunk lookup, faction retrieval, color values)
+  - Error handling with try-catch blocks
+- `getForceBlockColor()`: Applies faction color overlay to block colors
+  - Validates RGB component ranges
+  - Clamps blended color values to 0-255
+  - Skips overlay if faction color is 0 (invisible)
+- `drawText()`: Draws faction name on chunk (if enabled in config)
+
+**Configuration Integration**:
+- Reads `ClaimConfig.renderClaimNamesOnWorldMap` (if implemented) to control name rendering
+- Uses faction colors from `FactionInfo.getColor()`
+
+### Registration Flow
+
+**In Main.setup()**:
+```java
+// Register world map provider codec
+IWorldMapProvider.CODEC.register(
+    FactionWorldMapProvider.ID, 
+    FactionWorldMapProvider.class, 
+    FactionWorldMapProvider.CODEC
+);
+```
+
+**In Main.start()**:
+```java
+// CRITICAL: Worlds load asynchronously, must wait for them to be ready
+Universe universe = Universe.get();
+universe.getUniverseReady().thenRun(() -> {
+    // Now worlds are guaranteed to be loaded
+    for (World world : universe.getWorlds().values()) {
+        if (world.getWorldMapManager() != null) {
+            world.getWorldMapManager().setGenerator(
+                FactionWorldMapProvider.INSTANCE.getGenerator(world)
+            );
+        }
+    }
+});
+
+// Fallback: Also try immediately if worlds are already available
+if (universe.getWorlds().size() > 0) {
+    registerWorldMapProviders(universe);
+}
+```
+
+**Important**: `Main.start()` is called before worlds finish loading. Always use `Universe.getUniverseReady()` to wait for async world loading before accessing `universe.getWorlds()`.
+
+**Via AddWorldEvent**:
+```java
+// Apply to newly added worlds
+getEventRegistry().registerGlobal(AddWorldEvent.class, event -> {
+    World world = event.getWorld();
+    world.getWorldMapManager().setGenerator(
+        FactionWorldMapProvider.INSTANCE.getGenerator(world)
+    );
+});
+```
+
+### World Map Update Queue
+
+**Purpose**: Queue map updates when chunks are claimed/unclaimed to refresh world map
+
+**Implementation**:
+- `FactionManager.queueMapUpdate(World world, int chunkX, int chunkZ)`: Queues chunk for map regeneration
+- Uses world's map manager to invalidate/regenerate specific chunks
+- Called automatically after claim/unclaim operations
+
+### Best Practices
+
+1. **Provider Registration Timing**: 
+   - Register provider codec in `setup()`
+   - **CRITICAL**: In `start()`, use `Universe.getUniverseReady()` to wait for async world loading before accessing worlds
+   - Apply to worlds in the `getUniverseReady()` callback and `AddWorldEvent` handler
+   - Always check if `WorldMapManager` is null before calling `setGenerator()`
+
+2. **Async Image Building**: 
+   - Use `CompletableFuture` for all chunk data fetching and image generation
+   - Never block the world thread during image generation
+
+3. **Dimension Name Handling**:
+   - Try `worldChunk.getWorld().getName()` first (matches SimpleClaims approach)
+   - Fall back to `world.getName()` if worldChunk method fails
+   - Log which method was used for debugging
+
+4. **Faction Color Overlay**: 
+   - Apply semi-transparent overlay (60% interior, 85% borders) to preserve terrain detail
+   - Validate color is not zero (invisible) before applying
+   - Clamp RGB values to 0-255 range
+   - Blend colors properly to maintain terrain visibility
+
+5. **Border Detection**: 
+   - Check adjacent chunks to determine border pixels for enhanced visibility
+   - **Null Safety**: Always check if nearby chunks are null before accessing `getFactionOwner()`
+   - Check if `getFactionOwner()` returns null (deleted faction) before comparison
+   - Wrap border detection in try-catch to prevent failures
+
+6. **Error Handling**:
+   - Wrap faction overlay code in try-catch blocks to prevent silent failures
+   - Log exceptions with stack traces for debugging
+   - Continue map generation even if overlay fails (don't break the map)
+
+7. **Debug Logging**:
+   - Log dimension names used at claim time vs map generation time
+   - Log chunk lookup results (found/not found)
+   - Log faction retrieval results (found/not found)
+   - Log color values (hex and RGB components)
+   - Log when map generation is requested and completed
+   - Use both `ConfigUtil.debug()` (conditional) and `LOGGER.at(Level.INFO)` (always) for critical events
+
+8. **Performance**: 
+   - Image building is async and doesn't block world thread
+   - Use efficient null checks to avoid unnecessary processing
+
+9. **Map Updates**: 
+   - Queue map updates after claim/unclaim operations to keep map current
+
+### Visual Features
+
+- **Faction Colors**: Claimed chunks show faction color overlay (60% opacity interior, 85% borders)
+- **Borders**: Chunk borders are highlighted when adjacent to different factions or wilderness
+- **Terrain Preservation**: Overlay is semi-transparent to show underlying terrain
+- **Optional Names**: Faction names can be drawn on chunks (if enabled in config)
+- **Color Validation**: Invisible colors (0) are skipped to prevent black overlays
+
+### Troubleshooting
+
+**Issue**: No colored squares appear on map
+- **Check**: Verify worlds are loaded using `Universe.getUniverseReady()`
+- **Check**: Verify `WorldMapManager` is not null before setting generator
+- **Check**: Enable debug logging to see dimension names, chunk lookups, and faction retrieval
+- **Check**: Verify faction colors are not zero (invisible)
+- **Check**: Check server logs for exceptions during map generation
+
+**Issue**: Dimension name mismatch
+- **Solution**: Code tries both `worldChunk.getWorld().getName()` and `world.getName()`
+- **Debug**: Check logs to see which dimension name is being used
+
+**Issue**: Null pointer exceptions in border detection
+- **Solution**: Code now safely checks for null chunks and null faction owners
+- **Debug**: Check logs for "Exception during border detection" messages
+
+---
+
+## UI System
+
+### Overview
+
+FactionCore implements an interactive UI system using Hytale's `InteractiveCustomUIPage` pattern. The UI allows players to manage factions, view chunk claims, and interact with the claiming system through visual interfaces.
+
+### UI Components
+
+#### ChunkVisualizerPage
+
+**Location**: `com.factioncore.ui.ChunkVisualizerPage`
+
+**Type**: `InteractiveCustomUIPage<ChunkVisualizerData>`
+
+**Purpose**: Displays a grid of chunks around the player's position for visual claiming/unclaiming
+
+**Key Features**:
+- Configurable grid size (via `ClaimConfig.chunkVisualizerGridRadius`)
+- Dynamic grid building based on player position
+- Click-to-claim/unclaim functionality
+- Real-time UI updates after operations
+- Visual feedback (colors, tooltips, center marker)
+
+**Event Handling**:
+- Uses structured `ChunkVisualizerData` with typed fields (action, chunkX, chunkZ)
+- Left-click on unclaimed chunks → claim action
+- Right-click on owned chunks → unclaim action
+- Validates permissions and claim limits before operations
+
+**UI Files**:
+- `Pages/ChunkVisualizer.ui`: Main page layout with scrollable grid
+- `Pages/ChunkEntry.ui`: Reusable chunk square button (32x32 pixels)
+
+#### FactionShowPage
+
+**Location**: `com.factioncore.ui.FactionShowPage`
+
+**Integration**: Opens `ChunkVisualizerPage` when "CLAIM" button is clicked
+
+**Flow**:
+1. Player clicks "CLAIM" button in faction UI
+2. `FactionShowPage.handleDataEvent()` receives "claim" action
+3. Gets player's current chunk coordinates and dimension
+4. Opens `ChunkVisualizerPage` with player's position as center
+
+### UI Event Handling Patterns
+
+#### Structured Event Data
+
+**Best Practice**: Use typed `EventData` with separate fields instead of string parsing
+
+**Example**:
+```java
+// ✅ Good: Structured data
+public static class ChunkVisualizerData {
+    private String action;      // "Claim" or "Unclaim"
+    private Integer chunkX;
+    private Integer chunkZ;
+    
+    public static final BuilderCodec<ChunkVisualizerData> CODEC = 
+        BuilderCodec.builder(ChunkVisualizerData.class, ChunkVisualizerData::new)
+            .addField(new KeyedCodec<>("Action", Codec.STRING), ...)
+            .addField(new KeyedCodec<>("ChunkX", Codec.INTEGER), ...)
+            .addField(new KeyedCodec<>("ChunkZ", Codec.INTEGER), ...)
+            .build();
+}
+
+// ❌ Bad: String parsing
+EventData.of("Action", "Claim:chunkX:chunkZ")
+```
+
+#### Event Binding
+
+**Pattern**: Bind events in `build()` method using `UIEventBuilder`
+
+**Example**:
+```java
+// Left-click to claim
+uiEventBuilder.addEventBinding(
+    CustomUIEventBindingType.Activating,
+    selector,
+    EventData.of(ChunkVisualizerData.KEY_ACTION, "Claim")
+        .append(ChunkVisualizerData.KEY_CHUNK_X, String.valueOf(worldChunkX))
+        .append(ChunkVisualizerData.KEY_CHUNK_Z, String.valueOf(worldChunkZ))
+);
+
+// Right-click to unclaim
+uiEventBuilder.addEventBinding(
+    CustomUIEventBindingType.RightClicking,
+    selector,
+    EventData.of(ChunkVisualizerData.KEY_ACTION, "Unclaim")
+        .append(ChunkVisualizerData.KEY_CHUNK_X, String.valueOf(worldChunkX))
+        .append(ChunkVisualizerData.KEY_CHUNK_Z, String.valueOf(worldChunkZ))
+);
+```
+
+**Note**: `EventData.append()` requires `String` values - convert integers using `String.valueOf()`
+
+#### Dynamic UI Building
+
+**Pattern**: Clear container before appending new elements
+
+**Example**:
+```java
+// CRITICAL: Clear before appending to prevent accumulation
+uiCommandBuilder.clear("#ChunkCards");
+
+// Build grid dynamically
+for (int z = 0; z < gridSize; z++) {
+    // Append row
+    uiCommandBuilder.appendInline("#ChunkCards", "Group { ... }");
+    
+    for (int x = 0; x < gridSize; x++) {
+        // Append chunk entry
+        uiCommandBuilder.append("#ChunkCards[" + z + "]", "Pages/ChunkEntry.ui");
+        
+        // Use index-based selectors
+        String selector = "#ChunkCards[" + z + "][" + x + "]";
+        uiCommandBuilder.set(selector + ".Text", "...");
+    }
+}
+```
+
+#### UI Refresh Pattern
+
+**Pattern**: Refresh page after state-changing operations
+
+**Example**:
+```java
+@Override
+public void handleDataEvent(Ref<EntityStore> ref, Store<EntityStore> store, ChunkVisualizerData data) {
+    // Perform operation (claim/unclaim)
+    if ("Claim".equals(data.action)) {
+        // ... claim logic ...
+    }
+    
+    // Refresh UI to show updated state
+    refreshPage(ref, store);
+}
+
+private void refreshPage(Ref<EntityStore> ref, Store<EntityStore> store) {
+    if (!ref.isValid()) return;
+    
+    UICommandBuilder commandBuilder = new UICommandBuilder();
+    UIEventBuilder eventBuilder = new UIEventBuilder();
+    build(ref, commandBuilder, eventBuilder, store);
+    sendUpdate(commandBuilder, eventBuilder, true);
+}
+```
+
+### MessageHelper Utility
+
+**Location**: `com.factioncore.util.MessageHelper`
+
+**Purpose**: Utility class for building multi-line tooltip messages
+
+**Usage**:
+```java
+Message tooltip = MessageHelper.multiLine()
+    .append(Message.raw("Owner: ").bold(true).color("#93844c"))
+    .append(Message.raw(factionName))
+    .nl()
+    .append(Message.raw("Description: ").bold(true).color("#93844c"))
+    .append(Message.raw(description))
+    .build();
+
+uiCommandBuilder.set(selector + ".TooltipTextSpans", tooltip);
+```
+
+**Key Methods**:
+- `multiLine()`: Creates new `ML` builder instance
+- `append(Message)`: Adds message to builder
+- `nl()`: Adds newline separator
+- `build()`: Returns final `Message` object
+
+**Best Practices**:
+1. Chain methods for readable code
+2. Use `nl()` for line breaks in tooltips
+3. Apply formatting (bold, color) to individual message parts
+4. Call `build()` at the end to get final `Message`
+
+### UI Best Practices
+
+1. **Clear Before Append**: Always clear containers before rebuilding dynamic content
+2. **Index-Based Selectors**: Use array-style selectors for grid elements (`#Container[row][col]`)
+3. **Structured Event Data**: Use typed `EventData` with separate fields, not string parsing
+4. **Type Conversions**: Convert integers to strings for `EventData.append()` using `String.valueOf()`
+5. **Refresh After Actions**: Call `refreshPage()` after state-changing operations
+6. **Configurable UI**: Read UI parameters from config (e.g., grid size)
+7. **Validation**: Validate permissions and state before performing operations
+8. **Error Messages**: Provide clear error messages for failed operations
+9. **Visual Feedback**: Use colors, tooltips, and markers to provide user feedback
+10. **Null Safety**: Use `@Nonnull` annotations and check for null before operations
+
+---
+
 ## Conclusion
 
 FactionCore demonstrates a well-architected Hytale plugin that:
@@ -2331,12 +2855,18 @@ The plugin integrates seamlessly with Hytale's ECS system while providing:
 - Thread-safe permission caching with O(1) lookups
 - Chunk claiming system with protection (break, place, interact)
 - Interactive UI system following Hytale UI best practices
+  - Chunk visualizer with configurable grid size
+  - Click-to-claim/unclaim functionality
+  - Real-time UI updates
+- World map integration showing claimed chunks with faction colors
 - Proper data storage practices (universe/ directory, BlockingDiskFile pattern)
 - Clean architecture with clear extension points
 
 **Key Implementation Highlights**:
 - **ECS Integration**: Lightweight components, efficient systems, proper registration, event systems for protection
 - **Chunk Claiming**: Full chunk claiming system with protection, claim limits, world blacklists
+- **Chunk Visualizer UI**: Interactive grid-based UI for visualizing and claiming chunks with configurable size
+- **World Map Integration**: Custom world map provider showing claimed chunks with faction colors and borders
 - **Protection Systems**: ECS event-based protection (BreakBlock, PlaceBlock, UseBlock) using EntityEventSystem
 - **Member Permissions System**: Flexible owner-granted permission system with LuckPerms integration
   - Owner-controlled permissions (rename, color, invite, allies, enemies)

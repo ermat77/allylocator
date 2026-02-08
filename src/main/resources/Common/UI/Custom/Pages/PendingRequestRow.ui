@@ -1,0 +1,43 @@
+$C = "../Common.ui";
+
+Group {
+  LayoutMode: Right;
+  Anchor: (Height: 44);
+
+  Label #RequestLabel {
+    Text: "";
+    FlexWeight: 1;
+    Anchor: (Height: 44, Vertical: 0);
+    Style: (FontSize: 14, TextColor: #ffffff, VerticalAlignment: Center);
+  }
+
+  $C.@TextButton #MembersButton {
+    Text: "Members";
+    Visible: true;
+    Anchor: (Width: 160, Height: 40, Vertical: 0);
+  }
+
+  Group { Anchor: (Width: 8); }
+
+  $C.@TextButton #AcceptButton {
+    Text: "Accept";
+    Visible: false;
+    Anchor: (Width: 120, Height: 40, Vertical: 0);
+  }
+
+  Group { Anchor: (Width: 8); }
+
+  $C.@CancelTextButton #DeclineButton {
+    Text: "Decline";
+    Visible: false;
+    Anchor: (Width: 120, Height: 40, Vertical: 0);
+  }
+
+  Group { Anchor: (Width: 8); }
+
+  $C.@TextButton #CancelButton {
+    Text: "Cancel";
+    Visible: false;
+    Anchor: (Width: 120, Height: 40, Vertical: 0);
+  }
+}

@@ -408,6 +408,145 @@ group #statsGrid {
 }
 ```
 
+## Handling CheckBoxes in UI
+
+Checkboxes are commonly used for toggles (e.g. permissions, ally settings). Use the **CheckBoxWithLabel** component and **ValueChanged** events so each click is saved immediately, without a separate Save button.
+
+### UI: CheckBoxWithLabel
+
+Use `$C.@CheckBoxWithLabel` with a **unique ID per row**. Set the label text in the UI with `@Text`; do **not** set `.Text` from Java on these elements (the client does not expose it and may crash).
+
+```ui
+$C = "../Common.ui";
+
+Group #CheckboxList {
+  LayoutMode: TopScrolling;
+  ScrollbarStyle: $C.@DefaultScrollbarStyle;
+  FlexWeight: 1;
+
+  $C.@CheckBoxWithLabel #PlaceBlocks {
+    @Text = "Allow ally to place blocks";
+    Padding: (Bottom: 8);
+  }
+
+  $C.@CheckBoxWithLabel #BreakBlocks {
+    @Text = "Allow ally to break blocks";
+    Padding: (Bottom: 8);
+  }
+}
+```
+
+**Rules:**
+- Give each row a **unique element ID** (e.g. `#PlaceBlocks`, `#BreakBlocks`), not the same `#CheckBox` everywhere.
+- Set label text only via `@Text = "..."` in the UI file.
+- For many rows, put them in a scrollable group: `LayoutMode: TopScrolling` and `ScrollbarStyle: $C.@DefaultScrollbarStyle`.
+
+### Java: Set Value and Disabled Only
+
+From Java, only set the **checkbox state** (and optionally disabled). Use the compound selector `elementId + " #CheckBox"`:
+
+```java
+// Set current value and whether the user can change it
+commandBuilder.set("#PlaceBlocks #CheckBox.Value", true);
+commandBuilder.set("#PlaceBlocks #CheckBox.Disabled", !playerCanEdit);
+```
+
+Do **not** set `#PlaceBlocks.Text` or any label property from Java; that can cause client errors.
+
+### Java: ValueChanged Binding (No @-Value Refs)
+
+Bind **ValueChanged** on each checkbox and send only an **Action** string. Do **not** bind checkbox values with `@FieldName` / `#ElementId #CheckBox.Value` in the event data—reading multiple checkbox values in one event can cause "Object reference not set to an instance of an object" on the client.
+
+```java
+// ✅ Correct: one Action string per checkbox
+eventBuilder.addEventBinding(
+    CustomUIEventBindingType.ValueChanged,
+    "#PlaceBlocks #CheckBox",
+    new EventData().append("Action", "placeBlocks"),
+    false
+);
+eventBuilder.addEventBinding(
+    CustomUIEventBindingType.ValueChanged,
+    "#BreakBlocks #CheckBox",
+    new EventData().append("Action", "breakBlocks"),
+    false
+);
+```
+
+```java
+// ❌ Avoid: binding checkbox values into event data (can cause client null reference)
+eventBuilder.addEventBinding(CustomUIEventBindingType.Activating, "#saveButton",
+    new EventData()
+        .append("Action", "save")
+        .append("@PlaceBlocks", "#PlaceBlocks #CheckBox.Value")  // Risky on client
+        .append("@BreakBlocks", "#BreakBlocks #CheckBox.Value"));
+```
+
+### Java: Handle Toggle and Refresh
+
+In `handleDataEvent`, when you receive the Action string, toggle the corresponding value in your model, persist it, then **refresh the page** so the UI stays in sync:
+
+```java
+@Override
+public void handleDataEvent(Ref<EntityStore> ref, Store<EntityStore> store, MyEventData data) {
+    if ("back".equals(data.action)) {
+        player.getPageManager().setPage(ref, store, Page.None);
+        return;
+    }
+
+    // Toggle the setting that corresponds to data.action
+    if ("placeBlocks".equals(data.action)) {
+        settings = new Settings(!settings.isPlaceBlocks(), settings.isBreakBlocks());
+        save(settings);
+        refreshPage(ref, store);
+    } else if ("breakBlocks".equals(data.action)) {
+        settings = new Settings(settings.isPlaceBlocks(), !settings.isBreakBlocks());
+        save(settings);
+        refreshPage(ref, store);
+    }
+}
+
+private void refreshPage(Ref<EntityStore> ref, Store<EntityStore> store) {
+    if (!ref.isValid()) return;
+    UICommandBuilder commandBuilder = new UICommandBuilder();
+    UIEventBuilder eventBuilder = new UIEventBuilder();
+    build(ref, commandBuilder, eventBuilder, store);
+    sendUpdate(commandBuilder, eventBuilder, true);
+}
+```
+
+### Helper Pattern
+
+Use a small helper to add each checkbox (value, disabled, and ValueChanged binding) so build() stays readable:
+
+```java
+private void addToggle(UICommandBuilder commandBuilder, UIEventBuilder eventBuilder,
+                       String elementId, String action, boolean value, boolean enabled) {
+    commandBuilder.set(elementId + " #CheckBox.Value", value);
+    commandBuilder.set(elementId + " #CheckBox.Disabled", !enabled);
+    eventBuilder.addEventBinding(
+        CustomUIEventBindingType.ValueChanged,
+        elementId + " #CheckBox",
+        new EventData().append("Action", action),
+        false
+    );
+}
+
+// In build():
+addToggle(commandBuilder, eventBuilder, "#PlaceBlocks", "placeBlocks", settings.isPlaceBlocks(), canEdit);
+addToggle(commandBuilder, eventBuilder, "#BreakBlocks", "breakBlocks", settings.isBreakBlocks(), canEdit);
+```
+
+### Checkbox Summary
+
+| Do | Don't |
+|----|--------|
+| Use `$C.@CheckBoxWithLabel` with unique IDs per row | Use the same `#CheckBox` ID in every row |
+| Set label text with `@Text` in the UI only | Set `.Text` on CheckBoxWithLabel from Java |
+| Set only `#ElementId #CheckBox.Value` and `#CheckBox.Disabled` from Java | Bind `@FieldName` to `#ElementId #CheckBox.Value` in event data |
+| Use `ValueChanged` with a single `Action` string per checkbox | Use Activating on a Save button that reads all checkbox values |
+| Toggle model in handleDataEvent and call refreshPage() | Rely on the client to send back the new value |
+
 ### Custom Button Styles
 
 Define reusable styles as variables:
@@ -457,6 +596,7 @@ Styles can be reused across multiple elements and potentially imported from othe
 5. **Codec Required**: All event data classes need a codec for serialization
 6. **UI Refresh Pattern**: Update data → Rebuild page → `sendUpdate()` with `clear=true` → Event bindings recreated
 7. **Async Operations**: Make blocking I/O async, refresh UI immediately after data changes (not after async completes)
+8. **CheckBoxes**: Use `CheckBoxWithLabel` in UI, set only `#ElementId #CheckBox.Value`/`.Disabled` from Java, bind `ValueChanged` with a single `Action` string (no @-value refs); see [Handling CheckBoxes in UI](#handling-checkboxes-in-ui)
 
 ## Best Practices
 
@@ -627,4 +767,3 @@ public void build(Ref<EntityStore> ref, UICommandBuilder commandBuilder,
 The code uses Hytale's Entity Component System (ECS), which is why you see:
 - `PlayerRef` vs `Player` (ref is a reference, Player is the component)
 - `StoreRef` and `store.getComponent()` pattern
-- This will be explained in more detail in future videos/articles

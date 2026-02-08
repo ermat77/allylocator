@@ -3,6 +3,7 @@ package com.factioncore.commands;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -51,7 +52,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
         
         if (!(sender instanceof Player)) {
             ConfigUtil.debug("KickFactionCommand: sender is not a Player");
-            commandContext.sendMessage(Message.raw("This command can only be used by players").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.players_only")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -60,7 +61,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
         
         if (ref == null || !ref.isValid()) {
             ConfigUtil.debug("KickFactionCommand: player reference is invalid");
-            commandContext.sendMessage(Message.raw("You must be in a world to use this command").color(Color.RED));
+            commandContext.sendMessage(Message.raw(I18n.get("chat.command.must_be_in_world")).color(Color.RED));
             return CompletableFuture.completedFuture(null);
         }
         
@@ -71,7 +72,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
             PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
             if (playerRef == null) {
                 ConfigUtil.debug("KickFactionCommand: could not get PlayerRef");
-                commandContext.sendMessage(Message.raw("Error: Could not get player reference").color(Color.RED));
+                commandContext.sendMessage(Message.raw(I18n.get("chat.command.no_player_ref")).color(Color.RED));
                 return;
             }
             
@@ -84,7 +85,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
             FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
             if (faction == null) {
                 ConfigUtil.debug("KickFactionCommand: player " + playerUuid + " is not in a faction");
-                commandContext.sendMessage(Message.raw("You must be in a faction to kick players")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.kick.must_be_in_faction"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -92,7 +93,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
             // Check permission (owner always has permission)
             if (!PermissionUtil.canKickMembersInFaction(playerUuid, faction)) {
                 ConfigUtil.debug("KickFactionCommand: player " + playerUuid + " does not have permission to kick members");
-                commandContext.sendMessage(Message.raw("You don't have permission to kick members from this faction")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.kick.no_permission"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -118,7 +119,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
             
             if (targetPlayerRef == null) {
                 ConfigUtil.debug("KickFactionCommand: player not found: " + targetPlayerName);
-                commandContext.sendMessage(Message.raw("Player '" + targetPlayerName + "' not found or not online")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.kick.not_found", targetPlayerName))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -129,7 +130,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
             // Check if trying to kick self
             if (targetPlayerUuid.equals(playerUuid)) {
                 ConfigUtil.debug("KickFactionCommand: cannot kick self");
-                commandContext.sendMessage(Message.raw("You cannot kick yourself from your faction")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.kick.cannot_kick_self"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -138,7 +139,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
             FactionInfo targetFaction = factionManager.getFactionFromPlayer(targetPlayerUuid);
             if (targetFaction == null || !targetFaction.getId().equals(faction.getId())) {
                 ConfigUtil.debug("KickFactionCommand: target player is not in the same faction");
-                commandContext.sendMessage(Message.raw("Player '" + targetPlayerName + "' is not in your faction")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.kick.not_in_faction", targetPlayerName))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -146,7 +147,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
             // Check if trying to kick the owner
             if (faction.isOwner(targetPlayerUuid)) {
                 ConfigUtil.debug("KickFactionCommand: cannot kick owner");
-                commandContext.sendMessage(Message.raw("You cannot kick the faction owner")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.kick.cannot_kick_owner"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -156,7 +157,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
             
             if (!success) {
                 ConfigUtil.debug("KickFactionCommand: failed to remove player from faction");
-                commandContext.sendMessage(Message.raw("Failed to kick player from faction")
+                commandContext.sendMessage(Message.raw(I18n.get("chat.kick.failed"))
                         .color(Color.RED).bold(true));
                 return;
             }
@@ -174,7 +175,7 @@ public class KickFactionCommand extends AbstractAsyncCommand {
                     Player.getComponentType()
                 );
                 if (targetPlayer != null) {
-                    targetPlayer.sendMessage(Message.raw("You have been kicked from faction '" + faction.getName() + "' by " + playerRef.getUsername())
+                    targetPlayer.sendMessage(Message.raw(I18n.get("chat.kick.target_message", faction.getName(), playerRef.getUsername()))
                             .color(Color.RED).bold(true));
                 }
             } catch (Exception e) {

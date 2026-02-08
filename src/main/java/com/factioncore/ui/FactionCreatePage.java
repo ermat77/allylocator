@@ -15,6 +15,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.ui.events.FactionCreatePageEventData;
+import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
 import java.awt.Color;
 import java.util.UUID;
@@ -38,6 +39,12 @@ public class FactionCreatePage extends InteractiveCustomUIPage<FactionCreatePage
         @Nonnull Store<EntityStore> store
     ) {
         commandBuilder.append("Pages/FactionCreatePage");
+
+        // Set static UI text from I18n
+        commandBuilder.set("#Title #TitleText.Text", I18n.get("ui.create.title"));
+        commandBuilder.set("#instructionsLabel.Text", I18n.get("ui.create.instructions"));
+        commandBuilder.set("#createButton.Text", I18n.get("ui.create.create_button"));
+        commandBuilder.set("#cancelButton.Text", I18n.get("ui.create.cancel"));
         
         // Bind create button with text input value
         eventBuilder.addEventBinding(
@@ -81,7 +88,7 @@ public class FactionCreatePage extends InteractiveCustomUIPage<FactionCreatePage
         
         // Validate input
         if (factionName == null || factionName.trim().isEmpty()) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction name cannot be empty")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.name_empty"))
                 .color(Color.RED).bold(true));
             return;
         }
@@ -96,7 +103,7 @@ public class FactionCreatePage extends InteractiveCustomUIPage<FactionCreatePage
         
         // Check permission
         if (!PermissionUtil.canCreateFaction(playerUuid)) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You don't have permission to create factions")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.no_permission_create"))
                 .color(Color.RED).bold(true));
             player.getPageManager().setPage(ref, store, Page.None);
             return;
@@ -107,7 +114,7 @@ public class FactionCreatePage extends InteractiveCustomUIPage<FactionCreatePage
         // Check if player is already in a faction
         FactionInfo existingFaction = factionManager.getFactionFromPlayer(playerUuid);
         if (existingFaction != null) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You are already in a faction: " + existingFaction.getName())
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.already_in_faction", existingFaction.getName()))
                 .color(Color.RED).bold(true));
             player.getPageManager().setPage(ref, store, Page.None);
             return;
@@ -120,7 +127,7 @@ public class FactionCreatePage extends InteractiveCustomUIPage<FactionCreatePage
             player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Failed to create faction. The name might already be taken.")
                 .color(Color.RED).bold(true));
         } else {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction '" + faction.getName() + "' created successfully!")
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.created_success", faction.getName()))
                 .color(Color.GREEN).bold(true));
             
             // Close the page after successful creation
