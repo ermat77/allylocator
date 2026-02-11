@@ -32,8 +32,20 @@ import javax.annotation.Nonnull;
  */
 public class FactionPendingAllyRequestsPage extends InteractiveCustomUIPage<FactionPendingAllyRequestsPageEventData> {
 
+    /** When non-null (e.g. opened from admin Diplomacy), we show this faction's pending requests. When null, we use the player's faction. */
+    private final UUID contextFactionId;
+
     public FactionPendingAllyRequestsPage(@Nonnull PlayerRef playerRef) {
+        this(playerRef, null);
+    }
+
+    /**
+     * Opens pending ally requests. When contextFactionId is non-null (admin flow), we show that faction's requests.
+     * When null, we show the player's faction's requests.
+     */
+    public FactionPendingAllyRequestsPage(@Nonnull PlayerRef playerRef, UUID contextFactionId) {
         super(playerRef, CustomPageLifetime.CanDismissOrCloseThroughInteraction, FactionPendingAllyRequestsPageEventData.CODEC);
+        this.contextFactionId = contextFactionId;
     }
 
     @Override
@@ -45,7 +57,9 @@ public class FactionPendingAllyRequestsPage extends InteractiveCustomUIPage<Fact
     ) {
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
+        FactionInfo faction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
 
         commandBuilder.append("Pages/FactionPendingAllyRequestsPage.ui");
 
@@ -67,7 +81,7 @@ public class FactionPendingAllyRequestsPage extends InteractiveCustomUIPage<Fact
         }
 
         UUID factionId = faction.getId();
-        boolean canManageAllies = PermissionUtil.canManageAlliesInFaction(playerUuid, faction);
+        boolean canManageAllies = (contextFactionId != null) || PermissionUtil.canManageAlliesInFaction(playerUuid, faction);
         List<PendingAllyRequest> pending = factionManager.getPendingAllyRequestsForFaction(factionId);
 
         commandBuilder.clear("#PendingRequestsList");
@@ -131,21 +145,23 @@ public class FactionPendingAllyRequestsPage extends InteractiveCustomUIPage<Fact
         }
 
         if ("back".equals(data.action)) {
-            FactionDiplomacyPage diplomacyPage = new FactionDiplomacyPage(playerRef);
+            FactionDiplomacyPage diplomacyPage = new FactionDiplomacyPage(playerRef, contextFactionId);
             player.getPageManager().openCustomPage(ref, store, diplomacyPage);
             return;
         }
 
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
+        FactionInfo faction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
         if (faction == null) return;
 
         UUID factionId = faction.getId();
         UUID targetId = data.getFactionIdUuid();
 
         if ("acceptAllyRequest".equals(data.action) && targetId != null) {
-            if (!PermissionUtil.canManageAlliesInFaction(playerUuid, faction)) {
+            if (contextFactionId == null && !PermissionUtil.canManageAlliesInFaction(playerUuid, faction)) {
                 player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You don't have permission to manage allies").color(Color.RED));
                 return;
             }
@@ -161,7 +177,7 @@ public class FactionPendingAllyRequestsPage extends InteractiveCustomUIPage<Fact
         }
 
         if ("declineAllyRequest".equals(data.action) && targetId != null) {
-            if (!PermissionUtil.canManageAlliesInFaction(playerUuid, faction)) {
+            if (contextFactionId == null && !PermissionUtil.canManageAlliesInFaction(playerUuid, faction)) {
                 player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You don't have permission to manage allies").color(Color.RED));
                 return;
             }
@@ -172,7 +188,7 @@ public class FactionPendingAllyRequestsPage extends InteractiveCustomUIPage<Fact
         }
 
         if ("cancelAllyRequest".equals(data.action) && targetId != null) {
-            if (!PermissionUtil.canManageAlliesInFaction(playerUuid, faction)) {
+            if (contextFactionId == null && !PermissionUtil.canManageAlliesInFaction(playerUuid, faction)) {
                 player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You don't have permission to manage allies").color(Color.RED));
                 return;
             }
@@ -204,7 +220,7 @@ public class FactionPendingAllyRequestsPage extends InteractiveCustomUIPage<Fact
                         try {
                             ConfigUtil.debug("[Back->PendingAlly] openPage runnable started; r.isValid()=" + r.isValid());
                             if (r.isValid()) {
-                                p.getPageManager().openCustomPage(r, s, new FactionPendingAllyRequestsPage(currentPlayerRef));
+                                p.getPageManager().openCustomPage(r, s, new FactionPendingAllyRequestsPage(currentPlayerRef, contextFactionId));
                                 ConfigUtil.debug("[Back->PendingAlly] openCustomPage(PendingAlly) completed");
                             } else {
                                 ConfigUtil.debug("[Back->PendingAlly] ref no longer valid, skipping open");

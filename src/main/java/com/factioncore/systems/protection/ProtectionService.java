@@ -5,6 +5,7 @@ import java.util.function.Predicate;
 
 import com.factioncore.Main;
 import com.factioncore.config.ClaimConfig;
+import com.factioncore.diplomacy.AllySettings;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.util.ConfigUtil;
@@ -18,14 +19,20 @@ public class ProtectionService {
     
     /**
      * Checks if a player is allowed to interact in a chunk.
-     * 
+     * <p>
+     * This overload does not consider ally settings; allies are always denied. Use the String overload
+     * with the appropriate INTERACT_KEY_* constant from {@link PermissionUtil} for
+     * ally-aware checks.
+     *
      * @param playerUuid The player UUID
      * @param dimension The dimension name
      * @param blockX The block X coordinate
      * @param blockZ The block Z coordinate
      * @param interactMethod Predicate to check if interaction type is enabled (e.g., FactionInfo protection settings)
      * @return true if interaction is allowed, false if blocked
+     * @deprecated Use {@link #isAllowedToInteract(UUID, String, int, int, String)} with the appropriate INTERACT_KEY_* for ally-aware checks.
      */
+    @Deprecated
     public static boolean isAllowedToInteract(UUID playerUuid, String dimension, int blockX, int blockZ, Predicate<FactionInfo> interactMethod) {
         FactionManager manager = FactionManager.getInstance();
         ConfigUtil.verboseDebug("[Protection] isAllowedToInteract dim=" + dimension + " block=(" + blockX + "," + blockZ + ") player=" + playerUuid);
@@ -86,73 +93,133 @@ public class ProtectionService {
     }
 
     /**
-     * Checks if a player is allowed to interact in a chunk using a permission key (e.g. open_chest, open_door).
-     * Same-faction: checks factioncore.ownfaction.&lt;key&gt; with context faction=faction-uuid.
-     * Ally: if player's faction is ally of chunk owner, checks factioncore.allyfaction.&lt;key&gt; with context faction=chunk-owner-name.
+     * Canonical entry point for all interaction types (same-faction and ally).
+     * Checks if a player is allowed to interact in a chunk using a permission key (e.g. open_chest, open_door, break_block).
+     * Same-faction: owner always allowed; else checks factioncore.ownfaction.&lt;key&gt; with context faction=faction-uuid.
+     * Ally: if player's faction is ally of chunk owner, checks in-memory AllySettings (chunk owner's settings for that ally) via {@link #isAllyAllowedForPermissionKey}.
+     * For new interaction types: add the key constant in {@link com.factioncore.util.PermissionUtil} and a case in {@link #isAllyAllowedForPermissionKey}.
      *
      * @param playerUuid The player UUID
      * @param dimension The dimension name
      * @param blockX The block X coordinate
      * @param blockZ The block Z coordinate
-     * @param interactPermissionKey Permission key suffix (e.g. "open_chest", "open_door")
+     * @param interactPermissionKey Permission key suffix (e.g. "open_chest", "open_door", "break_block")
      * @return true if interaction is allowed, false if blocked
      */
     public static boolean isAllowedToInteract(UUID playerUuid, String dimension, int blockX, int blockZ, String interactPermissionKey) {
         FactionManager manager = FactionManager.getInstance();
-        ConfigUtil.verboseDebug("[Protection] isAllowedToInteract dim=" + dimension + " block=(" + blockX + "," + blockZ + ") player=" + playerUuid + " key=" + interactPermissionKey);
+        boolean isPlaceBlock = PermissionUtil.INTERACT_KEY_PLACE_BLOCK.equals(interactPermissionKey);
+        boolean isBreakBlock = PermissionUtil.INTERACT_KEY_BREAK_BLOCK.equals(interactPermissionKey);
+        boolean isDebugKey = isPlaceBlock || isBreakBlock;
+        String logPrefix = isPlaceBlock ? "[Protection place_block] " : isBreakBlock ? "[Protection break_block] " : "[Protection] ";
+        if (isDebugKey) {
+            ConfigUtil.debug(logPrefix + "dim=" + dimension + " block=(" + blockX + "," + blockZ + ") player=" + playerUuid + (isBreakBlock ? " key=break_block" : ""));
+        } else {
+            ConfigUtil.verboseDebug("[Protection] isAllowedToInteract dim=" + dimension + " block=(" + blockX + "," + blockZ + ") player=" + playerUuid + " key=" + interactPermissionKey);
+        }
 
         if (playerUuid != null && PermissionUtil.canBypassProtectionAdmin(playerUuid)) {
-            ConfigUtil.verboseDebug("[Protection] ALLOW: admin bypass");
+            if (isDebugKey) ConfigUtil.debug(logPrefix + "ALLOW: admin bypass");
+            else ConfigUtil.verboseDebug("[Protection] ALLOW: admin bypass");
             return true;
         }
 
         com.factioncore.claim.ChunkInfo chunkInfo = manager.getChunkRawCoords(dimension, blockX, blockZ);
         if (chunkInfo == null) {
-            ConfigUtil.verboseDebug("[Protection] ALLOW: chunk not claimed");
+            if (isDebugKey) ConfigUtil.debug(logPrefix + "ALLOW: chunk not claimed");
+            else ConfigUtil.verboseDebug("[Protection] ALLOW: chunk not claimed");
             return true;
         }
 
         if (playerUuid == null) {
-            ConfigUtil.verboseDebug("[Protection] DENY: global event (no player) in claimed chunk");
+            if (isDebugKey) ConfigUtil.debug(logPrefix + "DENY: no player (global event)");
+            else ConfigUtil.verboseDebug("[Protection] DENY: global event (no player) in claimed chunk");
             return false;
         }
 
         FactionInfo chunkFaction = manager.getFactionById(chunkInfo.getFactionOwner());
         if (chunkFaction == null) {
-            ConfigUtil.verboseDebug("[Protection] ALLOW: chunk faction missing");
+            if (isDebugKey) ConfigUtil.debug(logPrefix + "ALLOW: chunk faction missing");
+            else ConfigUtil.verboseDebug("[Protection] ALLOW: chunk faction missing");
             return true;
         }
 
         FactionInfo playerFaction = manager.getFactionFromPlayer(playerUuid);
         if (playerFaction == null) {
-            ConfigUtil.verboseDebug("[Protection] DENY: player not in any faction");
+            if (isDebugKey) ConfigUtil.debug(logPrefix + "DENY: player not in any faction (chunk owned by " + chunkFaction.getName() + ")");
+            else ConfigUtil.verboseDebug("[Protection] DENY: player not in any faction");
             return false;
         }
 
         String ownPerm = "factioncore.ownfaction." + interactPermissionKey;
-        String allyPerm = "factioncore.allyfaction." + interactPermissionKey;
 
         if (chunkInfo.getFactionOwner().equals(playerFaction.getId())) {
             // Same faction: owner always allowed; else check member permission
             if (chunkFaction.isOwner(playerUuid)) {
-                ConfigUtil.verboseDebug("[Protection] ALLOW: owner");
+                if (isDebugKey) ConfigUtil.debug(logPrefix + "ALLOW: owner of " + chunkFaction.getName());
+                else ConfigUtil.verboseDebug("[Protection] ALLOW: owner");
                 return true;
             }
             boolean has = com.factioncore.permission.FactionPermissionManager.getInstance().hasPermission(playerUuid, ownPerm, chunkFaction.getId());
-            ConfigUtil.verboseDebug("[Protection] same faction member hasPerm=" + has + " => " + (has ? "ALLOW" : "DENY"));
+            if (isDebugKey) ConfigUtil.debug(logPrefix + "same faction member hasPerm=" + has + " => " + (has ? "ALLOW" : "DENY"));
+            else ConfigUtil.verboseDebug("[Protection] same faction member hasPerm=" + has + " => " + (has ? "ALLOW" : "DENY"));
             return has;
         }
 
-        // Different faction: allow only if ally and has ally permission with context faction=chunkOwnerName
+        // Different faction: allow only if ally and chunk owner's ally settings grant this permission (in-memory, no DB/LuckPerms call)
         if (!manager.getAllies(chunkFaction.getId()).contains(playerFaction.getId())) {
-            ConfigUtil.verboseDebug("[Protection] DENY: not ally");
+            if (isDebugKey) ConfigUtil.debug(logPrefix + "DENY: not ally (chunk=" + chunkFaction.getName() + " playerFaction=" + playerFaction.getName() + ")");
+            else ConfigUtil.verboseDebug("[Protection] DENY: not ally");
             return false;
         }
-        String chunkOwnerName = chunkFaction.getName();
-        if (chunkOwnerName == null) chunkOwnerName = chunkFaction.getId().toString();
-        boolean hasAlly = PermissionUtil.hasPermissionWithContext(playerUuid, allyPerm, "faction", chunkOwnerName);
-        ConfigUtil.verboseDebug("[Protection] ally hasPerm=" + hasAlly + " => " + (hasAlly ? "ALLOW" : "DENY"));
+        AllySettings settings = manager.getAllySettings(chunkFaction.getId(), playerFaction.getId());
+        boolean hasAlly = isAllyAllowedForPermissionKey(settings, interactPermissionKey);
+        if (isPlaceBlock) {
+            String mapKey = chunkFaction.getId().toString() + "_" + playerFaction.getId().toString();
+            boolean keyInMap = manager.hasAllySettingsEntry(chunkFaction.getId(), playerFaction.getId());
+            ConfigUtil.debug("[Protection place_block] ally: chunkOwner=" + chunkFaction.getName() + " playerFaction=" + playerFaction.getName()
+                + " => " + (hasAlly ? "ALLOW" : "DENY"));
+            ConfigUtil.debug("[Protection place_block] ally_settings key=\"" + mapKey + "\" (chunkOwnerId_playerFactionId, both UUIDs) keyInMap=" + keyInMap
+                + " (if false, no entry for " + chunkFaction.getName() + "_" + playerFaction.getName() + "; check that " + chunkFaction.getName() + " opened Ally settings for " + playerFaction.getName() + ")");
+            ConfigUtil.debug("[Protection place_block] ally_settings state: shareMarkers=" + (settings != null && settings.isSharePlayerMarkers())
+                + " allowInteractions=" + (settings != null && settings.isAllowInteractionsInClaimedChunks())
+                + " openChest=" + (settings != null && settings.isAllowOpenChest())
+                + " openDoor=" + (settings != null && settings.isAllowOpenDoor())
+                + " openBench=" + (settings != null && settings.isAllowOpenBench())
+                + " useChair=" + (settings != null && settings.isAllowUseChair())
+                + " usePortal=" + (settings != null && settings.isAllowUsePortal())
+                + " placeBlock=" + (settings != null && settings.isAllowPlaceBlock())
+                + " breakBlock=" + (settings != null && settings.isAllowBreakBlock()));
+            if (!hasAlly) {
+                ConfigUtil.debug("[Protection place_block] To allow: " + chunkFaction.getName() + " must open Diplomacy -> ally " + playerFaction.getName() + " -> Ally settings -> check Place block (not the other way around).");
+            }
+        } else if (isBreakBlock) {
+            ConfigUtil.debug("[Protection break_block] ally: chunkOwner=" + chunkFaction.getName() + " playerFaction=" + playerFaction.getName()
+                + " => " + (hasAlly ? "ALLOW" : "DENY"));
+            if (!hasAlly) {
+                ConfigUtil.debug("[Protection break_block] To allow: " + chunkFaction.getName() + " must open Diplomacy -> ally " + playerFaction.getName() + " -> Ally settings -> check Break block.");
+            }
+        } else {
+            ConfigUtil.verboseDebug("[Protection] ally hasPerm=" + hasAlly + " => " + (hasAlly ? "ALLOW" : "DENY"));
+        }
         return hasAlly;
+    }
+
+    /**
+     * Maps interactPermissionKey to the corresponding AllySettings getter (in-memory, no DB call).
+     */
+    private static boolean isAllyAllowedForPermissionKey(AllySettings settings, String interactPermissionKey) {
+        if (settings == null) return false;
+        switch (interactPermissionKey) {
+            case PermissionUtil.INTERACT_KEY_OPEN_CHEST: return settings.isAllowOpenChest();
+            case PermissionUtil.INTERACT_KEY_OPEN_DOOR: return settings.isAllowOpenDoor();
+            case PermissionUtil.INTERACT_KEY_OPEN_BENCH: return settings.isAllowOpenBench();
+            case PermissionUtil.INTERACT_KEY_USE_CHAIR: return settings.isAllowUseChair();
+            case PermissionUtil.INTERACT_KEY_USE_PORTAL: return settings.isAllowUsePortal();
+            case PermissionUtil.INTERACT_KEY_PLACE_BLOCK: return settings.isAllowPlaceBlock();
+            case PermissionUtil.INTERACT_KEY_BREAK_BLOCK: return settings.isAllowBreakBlock();
+            default: return false;
+        }
     }
 
     /**

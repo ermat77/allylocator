@@ -94,6 +94,12 @@ public class FactionCreatePage extends InteractiveCustomUIPage<FactionCreatePage
         }
         
         String trimmedName = factionName.trim();
+        if (trimmedName.length() < 3) {
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.name_too_short"))
+                .color(Color.RED).bold(true));
+            return;
+        }
+        
         int maxLength = FactionManager.getMaxFactionNameLength();
         if (trimmedName.length() > maxLength) {
             player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Faction name cannot exceed " + maxLength + " characters")

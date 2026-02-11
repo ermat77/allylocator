@@ -420,7 +420,7 @@ public class FactionDiplomacyPage extends InteractiveCustomUIPage<FactionDiploma
         }
 
         if ("manageRequests".equals(action)) {
-            FactionPendingAllyRequestsPage pendingPage = new FactionPendingAllyRequestsPage(playerRef);
+            FactionPendingAllyRequestsPage pendingPage = new FactionPendingAllyRequestsPage(playerRef, contextFactionId);
             player.getPageManager().openCustomPage(ref, store, pendingPage);
             return;
         }
@@ -485,7 +485,7 @@ public class FactionDiplomacyPage extends InteractiveCustomUIPage<FactionDiploma
                         ConfigUtil.debug("[Diplomacy] openAllySettings: ref no longer valid, skipping open");
                         return;
                     }
-                    FactionAllySettingsPage settingsPage = new FactionAllySettingsPage(playerRef, targetId);
+                    FactionAllySettingsPage settingsPage = new FactionAllySettingsPage(playerRef, targetId, contextFactionId);
                     player.getPageManager().openCustomPage(ref, store, settingsPage);
                     ConfigUtil.debug("[Diplomacy] openAllySettings: openCustomPage(AllySettings) completed");
                 } catch (Throwable t) {
@@ -504,6 +504,7 @@ public class FactionDiplomacyPage extends InteractiveCustomUIPage<FactionDiploma
         }
 
         if ("openMembers".equals(action) && targetId != null) {
+            UUID backContextFactionId = contextFactionId;
             FactionMembersPage membersPage = new FactionMembersPage(playerRef, targetId,
                 (r, s) -> {
                     ConfigUtil.debug("[Back->Diplomacy] callback entered; r=" + (r != null ? "non-null, valid=" + r.isValid() : "null") + ", s=" + (s != null ? "non-null" : "null"));
@@ -526,7 +527,7 @@ public class FactionDiplomacyPage extends InteractiveCustomUIPage<FactionDiploma
                         try {
                             ConfigUtil.debug("[Back->Diplomacy] openPage runnable started; r.isValid()=" + r.isValid());
                             if (r.isValid()) {
-                                p.getPageManager().openCustomPage(r, s, new FactionDiplomacyPage(currentPlayerRef));
+                                p.getPageManager().openCustomPage(r, s, new FactionDiplomacyPage(currentPlayerRef, backContextFactionId));
                                 ConfigUtil.debug("[Back->Diplomacy] openCustomPage(Diplomacy) completed");
                             } else {
                                 ConfigUtil.debug("[Back->Diplomacy] ref no longer valid, skipping open");

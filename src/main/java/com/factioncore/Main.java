@@ -15,6 +15,7 @@ import com.factioncore.systems.protection.GlobalBreakBlockProtectionSystem;
 import com.factioncore.systems.protection.GlobalDamageBlockProtectionSystem;
 import com.factioncore.systems.protection.PlaceBlockProtectionSystem;
 import com.factioncore.systems.protection.UseBlockProtectionSystem;
+import com.factioncore.systems.interaction.BlockUseOpenUISystem;
 import com.factioncore.systems.tick.ChunkBordersTickingSystem;
 import com.factioncore.systems.tick.TitleTickingSystem;
 import com.factioncore.systems.tick.WorldMapUpdateTickingSystem;
@@ -24,6 +25,7 @@ import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.server.core.Constants;
 import com.hypixel.hytale.component.system.ISystem;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
+import com.hypixel.hytale.server.core.command.system.CommandManager;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.universe.world.events.AddWorldEvent;
 import com.hypixel.hytale.server.core.plugin.JavaPlugin;
@@ -59,6 +61,10 @@ public class Main extends JavaPlugin {
     private final FactionWorldMapProvider worldMapProvider = new FactionWorldMapProvider();
     /** Plugin data directory: same folder as the plugin JAR, then FactionCore (e.g. mods/FactionCore). */
     private final Path pluginDataPath;
+    /** Cached DelayTp plugin instance (optional dependency). Null if DelayTp not present. */
+    private Object delayTpApi;
+    /** True after we have tried to resolve DelayTp on first use (lazy resolution). */
+    private boolean delayTpLazyResolutionDone;
 
     /**
      * Creates a new Main plugin instance.
@@ -70,15 +76,13 @@ public class Main extends JavaPlugin {
         pluginInstance = this;
         this.pluginDataPath = computePluginDataPath();
 
-        // Register configs (must be called before setup)
-        this.claimConfig = withConfig(ClaimConfig.CODEC);
-
-        // GeneralConfig in plugin data folder (e.g. mods/FactionCore/config.json)
+        // Configs in plugin data folder (e.g. mods/FactionCore/claim_config.json, config.json)
         try {
             Files.createDirectories(pluginDataPath);
         } catch (Exception e) {
             // Directory might already exist, ignore
         }
+        this.claimConfig = new Config<>(pluginDataPath, "claim_config", ClaimConfig.CODEC);
         this.generalConfig = new Config<>(pluginDataPath, "config", GeneralConfig.CODEC);
     }
 
@@ -115,6 +119,19 @@ public class Main extends JavaPlugin {
         return pluginInstance;
     }
     
+    /**
+     * Gets the DelayTp plugin instance (optional dependency). Resolves lazily on first use so DelayTp
+     * is found even if it loads after FactionCore. Null if DelayTp not present.
+     * Use {@link com.factioncore.util.DelayTpHelper#requestDelayedTeleport} to call the API via reflection.
+     */
+    public Object getDelayTpApi() {
+        if (delayTpApi == null && !delayTpLazyResolutionDone) {
+            delayTpLazyResolutionDone = true;
+            resolveDelayTp();
+        }
+        return delayTpApi;
+    }
+
     /**
      * Gets the ComponentType for FactionComponent.
      * 
@@ -235,11 +252,24 @@ public class Main extends JavaPlugin {
             com.factioncore.permission.FactionPermissionManager.getInstance();
             getLogger().at(Level.INFO).log("FactionPermissionManager initialized");
             ConfigUtil.debug("FactionPermissionManager initialized");
+
+            // Resolve optional DelayTp API (same pattern as LuckPerms: PluginManager + bridge classloader)
+            resolveDelayTp();
             
-            // Initialize FactionManager (loads factions from disk)
+            // Initialize FactionManager first (loads factions, allies, etc. from database)
+            // so DB is opened and populated before we write claim_config.json in the same directory
             FactionManager.getInstance();
             getLogger().at(Level.INFO).log("FactionManager initialized");
             ConfigUtil.debug("FactionManager initialized");
+            
+            // Load ClaimConfig after FactionManager (creates claim_config.json with defaults if missing)
+            try {
+                this.claimConfig.load().join();
+                this.claimConfig.save().join();
+                getLogger().at(Level.INFO).log("ClaimConfig loaded from " + getPluginDataPath().resolve("claim_config.json"));
+            } catch (Exception e) {
+                getLogger().at(Level.WARNING).withCause(e).log("Failed to load/save ClaimConfig: " + e.getMessage());
+            }
             
             // Register FactionComponent
             this.factionComponentType = getEntityStoreRegistry().registerComponent(
@@ -278,6 +308,10 @@ public class Main extends JavaPlugin {
             getLogger().at(Level.INFO).log("UseBlockProtectionSystem registered");
             ConfigUtil.debug("UseBlockProtectionSystem registered");
 
+            getEntityStoreRegistry().registerSystem((ISystem) new BlockUseOpenUISystem());
+            getLogger().at(Level.INFO).log("BlockUseOpenUISystem registered (F key on block opens UI)");
+            ConfigUtil.debug("BlockUseOpenUISystem registered");
+
             // Global (world-level) break/damage protection: explosions and non-player breaks (SimpleClaims-style)
             getEntityStoreRegistry().registerSystem((ISystem) new GlobalDamageBlockProtectionSystem());
             getEntityStoreRegistry().registerSystem((ISystem) new GlobalBreakBlockProtectionSystem());
@@ -295,7 +329,10 @@ public class Main extends JavaPlugin {
             getCommandRegistry().registerCommand(factionCommand);
             getLogger().at(Level.INFO).log("Faction command registered: /f");
             ConfigUtil.debug("Faction command registered: /f");
-            
+
+            // /spawn is registered in start() so it runs after built-in TeleportPlugin.setup(),
+            // ensuring our delayed /spawn overwrites the native one in CommandManager's map.
+
             // Register event handlers
             registerEvents();
             ConfigUtil.debug("Event handlers registered");
@@ -326,6 +363,20 @@ public class Main extends JavaPlugin {
     protected void start() {
         getLogger().at(Level.INFO).log("FactionCore plugin started! Players will only see markers for faction members.");
         ConfigUtil.debug("Main.start() called - plugin started");
+
+        // Completely override native /spawn: remove the built-in command (OP-gated) then register ours.
+        CommandManager cmdManager = CommandManager.get();
+        java.util.Map<String, AbstractCommand> reg = cmdManager.getCommandRegistration();
+        AbstractCommand removed = reg.remove("spawn");
+        if (removed != null) {
+            getLogger().at(Level.INFO).log("FactionCore: removed native /spawn command (was: %s)", removed.getClass().getName());
+            ConfigUtil.debug("FactionCore: removed native /spawn from CommandManager");
+        } else {
+            ConfigUtil.debug("FactionCore: no native /spawn in CommandManager (already removed or not yet registered)");
+        }
+        getCommandRegistry().registerCommand(new com.factioncore.commands.SpawnCommand());
+        getLogger().at(Level.INFO).log("Spawn command registered: /spawn (delayed, permission: factioncore.player.spawn)");
+        ConfigUtil.debug("Spawn command registered: /spawn (delayed, permission: factioncore.player.spawn)");
 
         // Load player UUID -> displayName from universe/players JSON (fallback for offline name lookup)
         try {
@@ -612,6 +663,100 @@ public class Main extends JavaPlugin {
             getLogger().at(Level.WARNING).log("Error checking for LuckPerms: " + e.getMessage());
             return false;
         }
+    }
+
+    /**
+     * Resolves optional DelayTp plugin via classloading (same pattern as LuckPerms).
+     * Finds a ClassLoader that can load {@code com.delaytp.Main}, then calls {@code Main.get()}
+     * to obtain the plugin instance. Does not depend on PluginManager or plugin name.
+     * Caches the instance in delayTpApi for use in HomeFactionCommand.
+     */
+    private void resolveDelayTp() {
+        this.delayTpApi = null;
+        try {
+            ConfigUtil.debug("resolveDelayTp: resolving DelayTp via classloader (Main.get())");
+            ClassLoader loader = getDelayTpClassLoader();
+            if (loader == null) {
+                ConfigUtil.debug("resolveDelayTp: no classloader can load com.delaytp.Main");
+                getLogger().at(Level.INFO).log("DelayTp not found – /f home will teleport immediately");
+                return;
+            }
+            Class<?> mainClass = Class.forName("com.delaytp.Main", false, loader);
+            java.lang.reflect.Method getMethod = mainClass.getMethod("get");
+            Object instance = getMethod.invoke(null);
+            if (instance != null) {
+                this.delayTpApi = instance;
+                getLogger().at(Level.INFO).log("DelayTp detected – delayed teleport available for /f home");
+                ConfigUtil.debug("resolveDelayTp: DelayTp instance obtained via Main.get()");
+            } else {
+                ConfigUtil.debug("resolveDelayTp: Main.get() returned null (DelayTp not initialized yet?)");
+                getLogger().at(Level.INFO).log("DelayTp not found – /f home will teleport immediately");
+            }
+        } catch (Exception e) {
+            ConfigUtil.debug("resolveDelayTp: exception resolving DelayTp", e);
+            getLogger().at(Level.FINE).log("DelayTp not available: " + e.getMessage());
+            getLogger().at(Level.INFO).log("DelayTp not found – /f home will teleport immediately");
+        }
+    }
+
+    /**
+     * Gets a ClassLoader that can load com.delaytp.Main, or null if none.
+     * Tries PluginBridgeClassLoader first, then context, system, and default (same order as LuckPerms).
+     */
+    private static ClassLoader getDelayTpClassLoader() {
+        try {
+            // PluginBridgeClassLoader (most reliable for plugin-to-plugin access)
+            try {
+                Class<?> pluginManagerClass = Class.forName("com.hypixel.hytale.server.core.plugin.PluginManager");
+                java.lang.reflect.Method getMethod = pluginManagerClass.getMethod("get");
+                Object pluginManager = getMethod.invoke(null);
+                if (pluginManager != null) {
+                    java.lang.reflect.Method getBridgeClassLoaderMethod = pluginManagerClass.getMethod("getBridgeClassLoader");
+                    ClassLoader bridge = (ClassLoader) getBridgeClassLoaderMethod.invoke(pluginManager);
+                    if (bridge != null) {
+                        Class.forName("com.delaytp.Main", false, bridge);
+                        return bridge;
+                    }
+                }
+            } catch (ClassNotFoundException e) {
+                // Continue
+            } catch (Exception e) {
+                // PluginManager not available or reflection failed
+            }
+
+            // Context classloader
+            ClassLoader ctx = Thread.currentThread().getContextClassLoader();
+            if (ctx != null) {
+                try {
+                    Class.forName("com.delaytp.Main", false, ctx);
+                    return ctx;
+                } catch (ClassNotFoundException e) {
+                    // Continue
+                }
+            }
+
+            // System classloader
+            ClassLoader sys = ClassLoader.getSystemClassLoader();
+            if (sys != null) {
+                try {
+                    Class.forName("com.delaytp.Main", false, sys);
+                    return sys;
+                } catch (ClassNotFoundException e) {
+                    // Continue
+                }
+            }
+
+            // Default (current class's classloader)
+            try {
+                Class.forName("com.delaytp.Main");
+                return Main.class.getClassLoader();
+            } catch (ClassNotFoundException e) {
+                // Not found
+            }
+        } catch (Exception e) {
+            // Ignore
+        }
+        return null;
     }
     
     /**

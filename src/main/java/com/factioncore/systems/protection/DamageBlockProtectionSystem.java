@@ -1,6 +1,7 @@
 package com.factioncore.systems.protection;
 
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;
@@ -83,12 +84,13 @@ public class DamageBlockProtectionSystem extends EntityEventSystem<EntityStore, 
 
         ConfigUtil.verboseDebug("DamageBlockProtectionSystem: player=" + playerUuid + ", dimension=" + dimension + ", block=" + blockX + "," + blockZ);
 
+        // Permission key path: same-faction + ally settings
         boolean allowed = ProtectionService.isAllowedToInteract(
             playerUuid,
             dimension,
             blockX,
             blockZ,
-            ProtectionService::isBlockBreakEnabled
+            PermissionUtil.INTERACT_KEY_BREAK_BLOCK
         );
 
         if (!allowed) {

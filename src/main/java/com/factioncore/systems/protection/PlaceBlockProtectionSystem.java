@@ -1,6 +1,7 @@
 package com.factioncore.systems.protection;
 
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Ref;
@@ -77,20 +78,22 @@ public class PlaceBlockProtectionSystem extends EntityEventSystem<EntityStore, P
         int blockX = targetBlock.getX();
         int blockZ = targetBlock.getZ();
         
-        ConfigUtil.verboseDebug("PlaceBlockProtectionSystem: player=" + playerUuid + ", dimension=" + dimension + ", block=" + blockX + "," + blockZ);
+        ConfigUtil.debug("[PlaceBlock] player=" + playerUuid + " dimension=" + dimension + " block=(" + blockX + "," + blockZ + ")");
         
-        // Check if block place is allowed
+        // Check via permission key so same-faction (member perms) and ally (AllySettings.allowPlaceBlock) are both considered
         boolean allowed = ProtectionService.isAllowedToInteract(
             playerUuid,
             dimension,
             blockX,
             blockZ,
-            ProtectionService::isBlockPlaceEnabled
+            PermissionUtil.INTERACT_KEY_PLACE_BLOCK
         );
         
         if (!allowed) {
-            ConfigUtil.debug("PlaceBlockProtectionSystem: blocking block place for player " + playerUuid);
+            ConfigUtil.debug("[PlaceBlock] DENY: cancelled for player " + playerUuid + " at (" + blockX + "," + blockZ + ")");
             event.setCancelled(true);
+        } else {
+            ConfigUtil.verboseDebug("[PlaceBlock] ALLOW: player " + playerUuid);
         }
     }
 }

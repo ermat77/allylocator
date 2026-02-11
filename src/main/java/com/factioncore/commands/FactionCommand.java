@@ -37,6 +37,9 @@ public class FactionCommand extends AbstractAsyncCommand {
         addSubCommand((AbstractCommand) new ClaimChunkCommand());
         addSubCommand((AbstractCommand) new UnclaimChunkCommand());
         addSubCommand((AbstractCommand) new ClaimInfoCommand());
+        addSubCommand((AbstractCommand) new SetHomeFactionCommand());
+        addSubCommand((AbstractCommand) new HomeFactionCommand());
+        addSubCommand((AbstractCommand) new PrismFactionCommand());
         addSubCommand((AbstractCommand) new AdminFactionCommand());
     }
     
@@ -64,8 +67,11 @@ public class FactionCommand extends AbstractAsyncCommand {
         commandContext.sendMessage(Message.raw(I18n.get("chat.help.claim")).color(Color.WHITE));
         commandContext.sendMessage(Message.raw(I18n.get("chat.help.unclaim")).color(Color.WHITE));
         commandContext.sendMessage(Message.raw(I18n.get("chat.help.claiminfo")).color(Color.WHITE));
+        commandContext.sendMessage(Message.raw(I18n.get("chat.help.sethome")).color(Color.WHITE));
+        commandContext.sendMessage(Message.raw(I18n.get("chat.help.home")).color(Color.WHITE));
+        commandContext.sendMessage(Message.raw(I18n.get("chat.help.prism")).color(Color.WHITE));
         commandContext.sendMessage(Message.raw(I18n.get("chat.help.admin")).color(Color.WHITE));
-        
+
         return CompletableFuture.completedFuture(null);
     }
 }

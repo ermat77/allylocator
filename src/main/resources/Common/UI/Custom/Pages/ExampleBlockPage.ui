@@ -1,0 +1,33 @@
+$C = "../Common.ui";
+
+$C.@PageOverlay {
+
+  $C.@DecoratedContainer {
+    Anchor: (Width: 400, Height: 200);
+
+    #Title {
+      Group {
+        $C.@Title #TitleText {
+          @Text = "Block";
+        }
+      }
+    }
+
+    #Content {
+      LayoutMode: Top;
+      Padding: (Left: 20, Right: 20, Top: 20, Bottom: 20);
+
+      Group #CloseButtons {
+        LayoutMode: Center;
+        Anchor: (Bottom: 10);
+
+        $C.@TextButton #CloseButton {
+          Text: "Close";
+          Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
+        }
+      }
+    }
+  }
+}
+
+$C.@BackButton {}

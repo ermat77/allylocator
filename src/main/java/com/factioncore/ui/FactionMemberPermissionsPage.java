@@ -34,10 +34,21 @@ import javax.annotation.Nonnull;
 public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<FactionMemberPermissionsPageEventData> {
     
     private final UUID targetMemberUuid;
-    
+    /** When non-null (e.g. /f admin Flowers), we edit this faction's member permissions. When null, we use the player's faction. */
+    private final UUID contextFactionId;
+
     public FactionMemberPermissionsPage(@Nonnull PlayerRef playerRef, @Nonnull UUID targetMemberUuid) {
+        this(playerRef, targetMemberUuid, null);
+    }
+
+    /**
+     * Opens member permissions. When contextFactionId is non-null (admin flow), we edit that faction's member.
+     * When null, we edit the player's faction's member.
+     */
+    public FactionMemberPermissionsPage(@Nonnull PlayerRef playerRef, @Nonnull UUID targetMemberUuid, UUID contextFactionId) {
         super(playerRef, CustomPageLifetime.CanDismiss, FactionMemberPermissionsPageEventData.CODEC);
         this.targetMemberUuid = targetMemberUuid;
+        this.contextFactionId = contextFactionId;
     }
     
     @Override
@@ -49,10 +60,12 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
     ) {
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
+        FactionInfo faction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
         
-        // Validate owner or admin (can manage member permissions for any faction)
-        boolean canManage = faction != null && (faction.isOwner(playerUuid) || PermissionUtil.canManageMemberPermissionsAdmin(playerUuid));
+        // Validate: admin context, or owner, or has admin permission
+        boolean canManage = faction != null && ((contextFactionId != null) || faction.isOwner(playerUuid) || PermissionUtil.canManageMemberPermissionsAdmin(playerUuid));
         if (faction == null || !canManage) {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player != null) {
@@ -95,6 +108,8 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         commandBuilder.set("#usePortalGroup #usePortalLabel.Text", I18n.get("ui.member_permissions.use_portal"));
         commandBuilder.set("#placeBlockGroup #placeBlockLabel.Text", I18n.get("ui.member_permissions.place_block"));
         commandBuilder.set("#breakBlockGroup #breakBlockLabel.Text", I18n.get("ui.member_permissions.break_block"));
+        commandBuilder.set("#setHomeGroup #setHomeLabel.Text", I18n.get("ui.member_permissions.set_home"));
+        commandBuilder.set("#homeGroup #homeLabel.Text", I18n.get("ui.member_permissions.home"));
         commandBuilder.set("#saveButton.Text", I18n.get("ui.member_permissions.save"));
         commandBuilder.set("#cancelButton.Text", I18n.get("ui.member_permissions.cancel"));
         
@@ -115,6 +130,8 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         commandBuilder.set("#UsePortalCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_USE_PORTAL));
         commandBuilder.set("#PlaceBlockCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_PLACE_BLOCK));
         commandBuilder.set("#BreakBlockCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_BREAK_BLOCK));
+        commandBuilder.set("#SetHomeCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_SET_HOME));
+        commandBuilder.set("#HomeCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_HOME));
         
         // Bind save button with all checkbox values and target member UUID
         eventBuilder.addEventBinding(
@@ -136,6 +153,8 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
                 .append("@UsePortalPermission", "#UsePortalCheckbox.Value")
                 .append("@PlaceBlockPermission", "#PlaceBlockCheckbox.Value")
                 .append("@BreakBlockPermission", "#BreakBlockCheckbox.Value")
+                .append("@SetHomePermission", "#SetHomeCheckbox.Value")
+                .append("@HomePermission", "#HomeCheckbox.Value")
         );
         
         // Bind cancel button
@@ -165,10 +184,12 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         
         UUID playerUuid = playerRef.getUuid();
         
-        // Re-validate owner or admin
+        // Re-validate: admin context, or owner, or admin permission
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo currentFaction = factionManager.getFactionFromPlayer(playerUuid);
-        boolean canManage = currentFaction != null && (currentFaction.isOwner(playerUuid) || PermissionUtil.canManageMemberPermissionsAdmin(playerUuid));
+        FactionInfo currentFaction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
+        boolean canManage = currentFaction != null && ((contextFactionId != null) || currentFaction.isOwner(playerUuid) || PermissionUtil.canManageMemberPermissionsAdmin(playerUuid));
         if (currentFaction == null || !canManage) {
             player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.owner_only"))
                 .color(Color.RED).bold(true));
@@ -224,15 +245,15 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         if (Boolean.TRUE.equals(data.breakBlockPermission)) {
             selectedPermissions.add(PermissionUtil.FACTION_PERM_BREAK_BLOCK);
         }
+        if (Boolean.TRUE.equals(data.setHomePermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_SET_HOME);
+        }
+        if (Boolean.TRUE.equals(data.homePermission)) {
+            selectedPermissions.add(PermissionUtil.FACTION_PERM_HOME);
+        }
         
-        // Update permissions via FactionPermissionManager (non-blocking, updates cache immediately)
-        com.factioncore.permission.FactionPermissionManager.getInstance().setMemberPermissions(targetUuid, selectedPermissions, currentFaction.getId());
-        
-        // Also update FactionInfo for database serialization (backward compatibility)
-        currentFaction.setMemberPermissions(targetUuid, selectedPermissions);
-        
-        // Save faction to database (queued, async, non-blocking)
-        factionManager.saveFaction(currentFaction);
+        // Update permissions in FactionManager (in-memory map; periodic save persists to DB via saveAllMemberPermissions)
+        factionManager.setMemberPermissions(currentFaction.getId(), targetUuid, selectedPermissions);
         
         String memberName = getPlayerName(targetUuid);
         player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.updated", memberName))

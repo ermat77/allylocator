@@ -1,6 +1,7 @@
 package com.factioncore.systems.protection;
 
 import com.factioncore.Main;
+import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.dependency.Dependency;
@@ -54,7 +55,7 @@ public class GlobalBreakBlockProtectionSystem extends WorldEventSystem<EntitySto
         int z = event.getTargetBlock().getZ();
 
         // Deny in claimed chunks when there is no player (null)
-        if (!ProtectionService.isAllowedToInteract(null, worldName, x, z, ProtectionService::isBlockBreakEnabled)) {
+        if (!ProtectionService.isAllowedToInteract(null, worldName, x, z, PermissionUtil.INTERACT_KEY_BREAK_BLOCK)) {
             event.setCancelled(true);
         }
     }

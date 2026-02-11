@@ -3,5 +3,9 @@
     "Name": "FactionCore",
     "Main": "com.factioncore.Main",
     "Version": "0.0.2",
-    "IncludesAssetPack": true
+    "DisabledByDefault": false,
+    "IncludesAssetPack": true,
+    "OptionalDependencies": {
+        "com.delaytp:DelayTp": "*"
+    }
 }

@@ -16,7 +16,33 @@
   "chat.help.claim": "  /f claim - Claim le chunk où vous êtes",
   "chat.help.unclaim": "  /f unclaim - Abandonner le chunk où vous êtes",
   "chat.help.claiminfo": "  /f claiminfo - Afficher les infos du chunk actuel",
+  "chat.help.sethome": "  /f sethome - Définir le foyer de la faction à votre position",
+  "chat.help.home": "  /f home - Se téléporter au foyer de la faction",
+  "chat.help.prism": "  /f prism - Entrer ou quitter votre prisme (monde plat temporaire)",
   "chat.help.admin": "  /f admin <nom> - Ouvrir l'interface faction en superadmin",
+
+  "chat.prism.no_permission": "Vous n'avez pas la permission d'utiliser /f prism",
+  "chat.prism.error": "Une erreur s'est produite avec le prisme. Réessayez ou contactez un admin.",
+
+  "ui.prism.title": "Prisme",
+  "ui.prism.test_button": "Tester le prisme",
+  "ui.prism.leave_button": "Quitter le prisme",
+
+  "chat.sethome.must_be_in_faction": "Vous devez être dans une faction pour définir un foyer",
+  "chat.sethome.no_permission": "Vous n'avez pas la permission de définir le foyer de la faction",
+  "chat.sethome.success": "Foyer de faction défini avec succès !",
+  "chat.sethome.error_world": "Erreur : Impossible d'obtenir le monde",
+
+  "chat.home.must_be_in_faction": "Vous devez être dans une faction pour utiliser le foyer",
+  "chat.home.no_permission": "Vous n'avez pas la permission d'utiliser le foyer de la faction",
+  "chat.home.not_set": "Votre faction n'a pas encore de foyer. Utilisez /f sethome pour en définir un.",
+  "chat.home.teleported": "Téléportation au foyer de la faction !",
+  "chat.home.delayed": "Téléportation dans quelques secondes – ne bougez pas et ne prenez pas de dégâts !",
+  "chat.home.error_world": "Erreur : Impossible d'atteindre le foyer (monde introuvable)",
+
+  "chat.spawn.delayed": "Téléportation au spawn dans quelques secondes – ne bougez pas et ne prenez pas de dégâts !",
+  "chat.spawn.teleported": "Téléporté au spawn !",
+  "chat.spawn.no_permission": "Vous n'avez pas la permission d'utiliser /spawn",
 
   "chat.claim.must_be_in_faction": "Vous devez être dans une faction pour claim des chunks",
   "chat.claim.must_be_in_faction_create": "Vous devez être dans une faction pour claim. Utilisez /f create <nom> pour en créer une.",
@@ -90,6 +116,7 @@
   "chat.faction.invite_cancelled": "Invitation annulée pour {0}",
   "chat.faction.failed_cancel_invite": "Échec de l'annulation de l'invitation",
   "chat.faction.name_empty": "Le nom de la faction ne peut pas être vide",
+  "chat.faction.name_too_short": "Le nom de la faction doit contenir au moins 3 caractères",
   "chat.faction.name_too_long": "Le nom ne peut pas dépasser {0} caractères",
   "chat.faction.no_permission_create": "Vous n'avez pas la permission de créer des factions",
   "chat.faction.already_in_faction": "Vous êtes déjà dans une faction : {0}",
@@ -216,7 +243,7 @@
   "ui.members.close": "Fermer",
 
   "ui.create.title": "Créer une faction",
-  "ui.create.instructions": "Entrez un nom pour votre nouvelle faction :",
+  "ui.create.instructions": "Entrez un nom pour votre nouvelle faction (au moins 3 caractères) :",
   "ui.create.placeholder": "Entrez le nom de la faction...",
   "ui.create.create_button": "Créer",
   "ui.create.cancel": "Annuler",
@@ -231,6 +258,8 @@
   "ui.member_permissions.enemies": "Gérer les ennemis",
   "ui.member_permissions.save": "Enregistrer",
   "ui.member_permissions.cancel": "Annuler",
+  "ui.member_permissions.set_home": "Définir le foyer de la faction",
+  "ui.member_permissions.home": "Utiliser le foyer de la faction",
 
   "ui.pending_invites.title": "Invitations en attente",
   "ui.pending_invites.header": "Vous avez été invité à rejoindre des factions :",

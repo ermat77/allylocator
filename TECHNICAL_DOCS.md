@@ -1134,9 +1134,9 @@ if (config != null) {
 
 **Purpose**: Configuration for chunk claiming system
 
-**File Location**: `universe/FactionCore/claim_config.json` (managed by Hytale's `withConfig()`)
+**File Location**: `mods/FactionCore/claim_config.json` (loaded via `new Config<>(pluginDataPath, "claim_config", ClaimConfig.CODEC)`)
 
-**Registration**: Registered in `Main` constructor via `withConfig(ClaimConfig.CODEC)`
+**Registration**: Registered in `Main` constructor via same `Config` constructor as GeneralConfig (plugin data path)
 
 **Pattern**: Uses Hytale's recommended `BuilderCodec` pattern for serialization
 
@@ -1551,6 +1551,7 @@ Check LuckPerms API (REQUIRED)
 - `PERM_DISBAND_FACTION = "factioncore.player.disband"` - Disband faction (owner only)
 - `PERM_SETTINGS = "factioncore.player.settings"` - Access faction settings
 - `PERM_VIEW_MEMBERS = "factioncore.player.members"` - View faction members list
+- `PERM_SPAWN = "factioncore.player.spawn"` - Use `/spawn` command (delayed teleport to world spawn)
 
 **Admin Permission Constants** (for actions on ANY faction, grouped under `factioncore.admin.*` for wildcard support):
 - `PERM_ADMIN_RENAME = "factioncore.admin.rename"` - Rename any faction
@@ -1774,6 +1775,7 @@ if (isOwner || hasAdminPermission || hasMemberPermission) {
 - `factioncore.player.claim` - Required for `/f claim` command
 - `factioncore.player.unclaim` - Required for `/f unclaim` command
 - `factioncore.player.claiminfo` - Required for `/f claiminfo` command
+- `factioncore.player.spawn` - Required for `/spawn` command (delayed teleport to world spawn)
 
 **UI Action Permissions**:
 - `factioncore.player.create_faction` - Required to create faction via UI
@@ -1786,7 +1788,7 @@ if (isOwner || hasAdminPermission || hasMemberPermission) {
 **Wildcard Support**:
 - `factioncore.*` - Grants all FactionCore permissions
 - `factioncore.admin.*` - Grants all admin permissions (allows actions on ANY faction)
-- `factioncore.player.*` - Grants all player permissions (create_faction, show, claim, unclaim, claiminfo, rename, color, disband, settings, members)
+- `factioncore.player.*` - Grants all player permissions (create_faction, show, claim, unclaim, claiminfo, spawn, rename, color, disband, settings, members)
 
 ### Usage Example
 
@@ -1824,6 +1826,7 @@ All commands and UI actions now enforce permissions:
 - `/f claim` - Checks `factioncore.player.claim`
 - `/f unclaim` - Checks `factioncore.player.unclaim`
 - `/f claiminfo` - Checks `factioncore.player.claiminfo`
+- `/spawn` - Checks `factioncore.player.spawn` (delayed teleport to world spawn)
 
 **UI Actions**:
 - Create faction (via UI) - Checks `factioncore.player.create_faction`
@@ -2309,8 +2312,8 @@ getEntityStoreRegistry().registerSystem(new FactionChatSystem());
 FactionCore follows Hytale best practices for file storage:
 
 **Data Storage**: `universe/FactionCore/`
-- General Configuration: `universe/FactionCore/config.json` (CODEC-based, manually loaded, plugin settings) - **ONLY JSON FILE**
-- Claim Configuration: `universe/FactionCore/claim_config.json` (CODEC-based, managed by Hytale's `withConfig()`)
+- General Configuration: `mods/FactionCore/config.json` (CODEC-based, manually loaded, plugin settings) - **ONLY JSON FILE**
+- Claim Configuration: `mods/FactionCore/claim_config.json` (CODEC-based, same `Config` constructor as GeneralConfig)
 - **SQLite Database**: `universe/FactionCore/factioncore.db` (all persistent data)
   - Factions table (faction data, members, generals, permissions)
   - Claims table (chunk claims)
@@ -2323,8 +2326,7 @@ FactionCore follows Hytale best practices for file storage:
   - Queued writes (async, non-blocking)
   - Periodic saves every 5 seconds when dirty
   - In-memory maps for all runtime queries (O(1) lookups)
-- **CODEC-based (withConfig)**: Managed by Hytale's config system (claim config)
-- **CODEC-based (custom path)**: Manually loaded in `setup()`, saved after loading (general config)
+- **CODEC-based (plugin data path)**: Claim config and general config both use `new Config<>(pluginDataPath, name, CODEC)` (e.g. `mods/FactionCore/claim_config.json`, `mods/FactionCore/config.json`)
 
 **Why `universe/` and not `mods/`?**
 - `mods/` directory is for plugin JAR files and asset packs (code/resources)
@@ -2348,9 +2350,8 @@ this.generalConfig = new Config<>(generalConfigPath, "config", GeneralConfig.COD
 // Database location: universe/FactionCore/factioncore.db
 DatabaseManager databaseManager = new DatabaseManager(logger);
 
-// ClaimConfig is managed by Hytale's withConfig() system
-// File location: universe/FactionCore/claim_config.json (automatic)
-this.claimConfig = withConfig(ClaimConfig.CODEC);
+// ClaimConfig in plugin data folder (e.g. mods/FactionCore/claim_config.json)
+this.claimConfig = new Config<>(pluginDataPath, "claim_config", ClaimConfig.CODEC);
 ```
 
 **Permissions File**: `run/permissions.json`
@@ -2360,7 +2361,7 @@ this.claimConfig = withConfig(ClaimConfig.CODEC);
 
 ### Configuration File Structure
 
-The `config.json` file is located at `universe/FactionCore/config.json` with the following structure:
+The `config.json` file is located at `mods/FactionCore/config.json` with the following structure:
 
 ```json
 {

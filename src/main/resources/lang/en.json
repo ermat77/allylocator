@@ -16,7 +16,36 @@
   "chat.help.claim": "  /f claim - Claim the chunk where you are",
   "chat.help.unclaim": "  /f unclaim - Unclaim the chunk where you are",
   "chat.help.claiminfo": "  /f claiminfo - Show information about the current chunk",
+  "chat.help.sethome": "  /f sethome - Set your faction home to your current location",
+  "chat.help.home": "  /f home - Teleport to your faction home",
+  "chat.help.prism": "  /f prism - Enter or leave your prism (temporary flat world)",
   "chat.help.admin": "  /f admin <factionname> - Open faction UI as superadmin (manage any faction)",
+
+  "chat.prism.no_permission": "You don't have permission to use /f prism",
+  "chat.prism.error": "Something went wrong with the prism. Try again or contact an admin.",
+
+  "ui.prism.title": "Prism",
+  "ui.prism.test_button": "Test prism",
+  "ui.prism.leave_button": "Leave prism",
+
+  "ui.block_example.title": "Block",
+  "ui.block_example.close": "Close",
+
+  "chat.sethome.must_be_in_faction": "You must be in a faction to set a home",
+  "chat.sethome.no_permission": "You don't have permission to set the faction home",
+  "chat.sethome.success": "Faction home set successfully!",
+  "chat.sethome.error_world": "Error: Could not get world",
+
+  "chat.home.must_be_in_faction": "You must be in a faction to use faction home",
+  "chat.home.no_permission": "You don't have permission to use faction home",
+  "chat.home.not_set": "Your faction has not set a home yet. Use /f sethome to set one.",
+  "chat.home.teleported": "Teleported to faction home!",
+  "chat.home.delayed": "Teleporting in a few seconds – don't move or take damage!",
+  "chat.home.error_world": "Error: Could not reach faction home (world not found)",
+
+  "chat.spawn.delayed": "Teleporting to spawn in a few seconds – don't move or take damage!",
+  "chat.spawn.teleported": "Teleported to spawn!",
+  "chat.spawn.no_permission": "You don't have permission to use /spawn",
 
   "chat.claim.must_be_in_faction": "You must be in a faction to claim chunks",
   "chat.claim.must_be_in_faction_create": "You must be in a faction to claim chunks. Use /f create <name> to create one.",
@@ -90,6 +119,7 @@
   "chat.faction.invite_cancelled": "Invite cancelled for {0}",
   "chat.faction.failed_cancel_invite": "Failed to cancel invite",
   "chat.faction.name_empty": "Faction name cannot be empty",
+  "chat.faction.name_too_short": "Faction name must be at least 3 characters",
   "chat.faction.name_too_long": "Faction name cannot exceed {0} characters",
   "chat.faction.no_permission_create": "You don't have permission to create factions",
   "chat.faction.already_in_faction": "You are already in a faction: {0}",
@@ -224,7 +254,7 @@
   "ui.members.close": "Close",
 
   "ui.create.title": "Create Faction",
-  "ui.create.instructions": "Enter a name for your new faction:",
+  "ui.create.instructions": "Enter a name for your new faction (at least 3 characters):",
   "ui.create.placeholder": "Enter faction name...",
   "ui.create.create_button": "Create",
   "ui.create.cancel": "Cancel",
@@ -246,6 +276,8 @@
   "ui.member_permissions.use_portal": "Use Portal",
   "ui.member_permissions.place_block": "Place Block",
   "ui.member_permissions.break_block": "Break Block",
+  "ui.member_permissions.set_home": "Set Faction Home",
+  "ui.member_permissions.home": "Use Faction Home",
 
   "ui.pending_invites.title": "Pending Invites",
   "ui.pending_invites.header": "You have been invited to join factions:",

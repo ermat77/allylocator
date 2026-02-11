@@ -25,6 +25,12 @@ public class FactionInfo {
     private LocalDateTime createdDate;
     private LocalDateTime modifiedDate;
     
+    /** Faction home location (null dimension = no home set). */
+    private String homeDimension;
+    private double homeX;
+    private double homeY;
+    private double homeZ;
+    
     // Member permissions: member UUID -> set of permission strings
     private Map<UUID, Set<String>> memberPermissions;
     
@@ -157,6 +163,56 @@ public class FactionInfo {
     
     public void setModifiedDate(LocalDateTime modifiedDate) {
         this.modifiedDate = modifiedDate;
+    }
+    
+    /** Returns true if a faction home location has been set. */
+    public boolean hasHome() {
+        return homeDimension != null && !homeDimension.isEmpty();
+    }
+    
+    public String getHomeDimension() {
+        return homeDimension;
+    }
+    
+    public void setHomeDimension(String homeDimension) {
+        this.homeDimension = homeDimension;
+        markModified();
+    }
+    
+    public double getHomeX() {
+        return homeX;
+    }
+    
+    public void setHomeX(double homeX) {
+        this.homeX = homeX;
+        markModified();
+    }
+    
+    public double getHomeY() {
+        return homeY;
+    }
+    
+    public void setHomeY(double homeY) {
+        this.homeY = homeY;
+        markModified();
+    }
+    
+    public double getHomeZ() {
+        return homeZ;
+    }
+    
+    public void setHomeZ(double homeZ) {
+        this.homeZ = homeZ;
+        markModified();
+    }
+    
+    /** Sets the faction home location in one call. Pass null dimension to clear. */
+    public void setHome(String dimension, double x, double y, double z) {
+        this.homeDimension = dimension;
+        this.homeX = x;
+        this.homeY = y;
+        this.homeZ = z;
+        markModified();
     }
     
     // Utility methods
@@ -317,118 +373,57 @@ public class FactionInfo {
     }
     
     /**
-     * Sets the permissions for a member.
-     * Delegates to FactionPermissionManager for runtime permission management.
-     * Also updates local memberPermissions map for database serialization.
-     * 
-     * @param memberUuid The UUID of the member
-     * @param permissions The set of permission strings to grant
+     * Sets the permissions for a member. Delegates to FactionManager (in-memory map, DB-backed).
      */
     public void setMemberPermissions(UUID memberUuid, Set<String> permissions) {
-        // Delegate to FactionPermissionManager (runtime permission management)
-        com.factioncore.permission.FactionPermissionManager.getInstance().setMemberPermissions(memberUuid, permissions, this.id);
-        
-        // Also update local map for database serialization (backward compatibility)
-        if (memberPermissions == null) {
-            memberPermissions = new HashMap<>();
-        }
-        if (permissions == null || permissions.isEmpty()) {
-            memberPermissions.remove(memberUuid);
-        } else {
-            memberPermissions.put(memberUuid, new HashSet<>(permissions));
-        }
+        FactionManager.getInstance().setMemberPermissions(this.id, memberUuid, permissions);
         markModified();
     }
     
     /**
-     * Grants a permission to a member.
-     * Delegates to FactionPermissionManager for runtime permission management.
-     * Also updates local memberPermissions map for database serialization.
-     * 
-     * @param memberUuid The UUID of the member
-     * @param permission The permission string to grant
+     * Grants a permission to a member. Delegates to FactionManager (in-memory map, DB-backed).
      */
     public void grantMemberPermission(UUID memberUuid, String permission) {
-        // Delegate to FactionPermissionManager (runtime permission management)
         com.factioncore.permission.FactionPermissionManager.getInstance().grantPermission(memberUuid, permission, this.id);
-        
-        // Also update local map for database serialization (backward compatibility)
-        if (memberPermissions == null) {
-            memberPermissions = new HashMap<>();
-        }
-        memberPermissions.computeIfAbsent(memberUuid, k -> new HashSet<>()).add(permission);
         markModified();
     }
     
     /**
-     * Revokes a permission from a member.
-     * Delegates to FactionPermissionManager for runtime permission management.
-     * Also updates local memberPermissions map for database serialization.
-     * 
-     * @param memberUuid The UUID of the member
-     * @param permission The permission string to revoke
+     * Revokes a permission from a member. Delegates to FactionManager.
      */
     public void revokeMemberPermission(UUID memberUuid, String permission) {
-        // Delegate to FactionPermissionManager (runtime permission management)
         com.factioncore.permission.FactionPermissionManager.getInstance().revokePermission(memberUuid, permission, this.id);
-        
-        // Also update local map for database serialization (backward compatibility)
-        if (memberPermissions == null) {
-            return;
-        }
-        Set<String> perms = memberPermissions.get(memberUuid);
-        if (perms != null) {
-            perms.remove(permission);
-            if (perms.isEmpty()) {
-                memberPermissions.remove(memberUuid);
-            }
-        }
         markModified();
     }
     
     /**
-     * Checks if a member has a specific permission.
-     * Delegates to FactionPermissionManager for runtime permission checks (uses cache + LuckPerms).
-     * 
-     * @param memberUuid The UUID of the member
-     * @param permission The permission string to check
-     * @return true if the member has the permission
+     * Checks if a member has a specific permission. Delegates to FactionManager.
      */
     public boolean hasMemberPermission(UUID memberUuid, String permission) {
-        // Delegate to FactionPermissionManager (runtime permission checks)
-        return com.factioncore.permission.FactionPermissionManager.getInstance().hasPermission(memberUuid, permission, this.id);
+        return FactionManager.getInstance().hasMemberPermission(this.id, memberUuid, permission);
     }
     
     /**
-     * Gets all member permissions map (for serialization).
-     * 
-     * @return A copy of the member permissions map
+     * Gets all member permissions for this faction (built from FactionManager).
      */
     public Map<UUID, Set<String>> getMemberPermissionsMap() {
-        if (memberPermissions == null) {
-            return new HashMap<>();
+        Map<UUID, Set<String>> out = new HashMap<>();
+        for (UUID m : getMembers()) {
+            out.put(m, FactionManager.getInstance().getMemberPermissions(this.id, m));
         }
-        Map<UUID, Set<String>> copy = new HashMap<>();
-        for (Map.Entry<UUID, Set<String>> entry : memberPermissions.entrySet()) {
-            copy.put(entry.getKey(), new HashSet<>(entry.getValue()));
+        if (getOwner() != null) {
+            out.put(getOwner(), FactionManager.getInstance().getMemberPermissions(this.id, getOwner()));
         }
-        return copy;
+        return out;
     }
     
     /**
-     * Sets the member permissions map (for deserialization).
-     * 
-     * @param permissions The member permissions map to set
+     * Sets the member permissions map (pushes to FactionManager).
      */
     public void setMemberPermissionsMap(Map<UUID, Set<String>> permissions) {
-        if (memberPermissions == null) {
-            memberPermissions = new HashMap<>();
-        } else {
-            memberPermissions.clear();
-        }
         if (permissions != null) {
             for (Map.Entry<UUID, Set<String>> entry : permissions.entrySet()) {
-                memberPermissions.put(entry.getKey(), new HashSet<>(entry.getValue()));
+                FactionManager.getInstance().setMemberPermissions(this.id, entry.getKey(), entry.getValue());
             }
         }
         markModified();

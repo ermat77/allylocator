@@ -1,5 +1,6 @@
 package com.factioncore.systems.marker;
 
+import com.factioncore.diplomacy.AllySettings;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.util.ConfigUtil;
@@ -56,8 +57,10 @@ public class FactionMarkerFilterService {
     
     /**
      * Applies faction-based marker filter to a player.
-     * Only players in the same faction will have visible markers.
-     * 
+     * Shows markers for: same-faction members, and ally faction members when that ally
+     * has "Share faction members' PlayerMarkers on the map" enabled for the viewer's faction
+     * (same pattern as {@link com.factioncore.systems.protection.ProtectionService} ally checks).
+     *
      * @param player The player to apply the filter to
      * @param playerRef The PlayerRef for the player
      */
@@ -83,23 +86,38 @@ public class FactionMarkerFilterService {
         ConfigUtil.verboseDebug("FactionMarkerFilterService.applyFilterToPlayer(): viewerFaction=" + 
                        (viewerFaction != null ? viewerFaction.getName() : "null"));
         
-        // Set the filter predicate
-        // This predicate is called for each player marker to determine visibility
+        // Set the filter predicate.
+        // Hytale API: predicate returns TRUE = hide marker, FALSE = show marker.
+        // (PlayerIconMarkerProvider: if filter.test(other) is true → skip; false → add marker.)
         tracker.setPlayerMapFilter(otherPlayerRef -> {
             if (otherPlayerRef == null) {
-                return false;
+                return true;  // hide
             }
             UUID otherPlayerUuid = otherPlayerRef.getUuid();
-            // Always hide self
+            // Always hide self (provider also skips self; this is defensive)
             if (viewerUuid.equals(otherPlayerUuid)) {
-                return false;
+                return true;  // hide
             }
             // If viewer has no faction, hide all other players
             if (viewerFaction == null) {
-                return false;
+                return true;  // hide
             }
-            // Check if other player is in the same faction
-            return viewerFaction.isOwnerOrMember(otherPlayerUuid);
+            // Same faction: show
+            if (viewerFaction.isOwnerOrMember(otherPlayerUuid)) {
+                return false;  // show
+            }
+            // Ally: show only if the other's faction has "share markers" enabled for viewer's faction
+            // (AllySettings are from the faction that owns the setting: otherFaction shares with viewerFaction)
+            FactionInfo otherFaction = factionManager.getFactionFromPlayer(otherPlayerUuid);
+            if (otherFaction == null) {
+                return true;  // hide
+            }
+            if (!factionManager.getAllies(viewerFaction.getId()).contains(otherFaction.getId())) {
+                return true;  // hide (not ally)
+            }
+            AllySettings settings = factionManager.getAllySettings(otherFaction.getId(), viewerFaction.getId());
+            boolean showAlly = settings != null && settings.isSharePlayerMarkers();
+            return !showAlly;  // hide when not sharing, show when sharing
         });
         
         ConfigUtil.verboseDebug("FactionMarkerFilterService.applyFilterToPlayer(): filter applied successfully");

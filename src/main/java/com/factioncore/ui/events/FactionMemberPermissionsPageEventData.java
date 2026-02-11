@@ -24,6 +24,8 @@ public class FactionMemberPermissionsPageEventData {
     public Boolean usePortalPermission;
     public Boolean placeBlockPermission;
     public Boolean breakBlockPermission;
+    public Boolean setHomePermission;
+    public Boolean homePermission;
 
     public static final BuilderCodec<FactionMemberPermissionsPageEventData> CODEC = BuilderCodec.builder(
         FactionMemberPermissionsPageEventData.class,
@@ -123,6 +125,18 @@ public class FactionMemberPermissionsPageEventData {
         new KeyedCodec<>("@BreakBlockPermission", Codec.BOOLEAN),
         (FactionMemberPermissionsPageEventData o, Boolean v) -> o.breakBlockPermission = v,
         (FactionMemberPermissionsPageEventData o) -> o.breakBlockPermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@SetHomePermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.setHomePermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.setHomePermission
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("@HomePermission", Codec.BOOLEAN),
+        (FactionMemberPermissionsPageEventData o, Boolean v) -> o.homePermission = v,
+        (FactionMemberPermissionsPageEventData o) -> o.homePermission
     )
     .add()
     .build();

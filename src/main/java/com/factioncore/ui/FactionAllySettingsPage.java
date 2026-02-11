@@ -32,10 +32,22 @@ import javax.annotation.Nonnull;
 public class FactionAllySettingsPage extends InteractiveCustomUIPage<FactionAllySettingsPageEventData> {
 
     private final UUID allyFactionId;
+    /** When non-null (e.g. /f admin Flowers), we edit this faction's ally settings. When null, we use the player's faction. */
+    private final UUID contextFactionId;
 
+    /** Opens ally settings for the player's own faction and the given ally. */
     public FactionAllySettingsPage(@Nonnull PlayerRef playerRef, @Nonnull UUID allyFactionId) {
+        this(playerRef, allyFactionId, null);
+    }
+
+    /**
+     * Opens ally settings. When contextFactionId is non-null (admin flow), we edit that faction's settings for the ally.
+     * When null, we edit the player's faction's settings for the ally.
+     */
+    public FactionAllySettingsPage(@Nonnull PlayerRef playerRef, @Nonnull UUID allyFactionId, UUID contextFactionId) {
         super(playerRef, CustomPageLifetime.CanDismissOrCloseThroughInteraction, FactionAllySettingsPageEventData.CODEC);
         this.allyFactionId = allyFactionId;
+        this.contextFactionId = contextFactionId;
     }
 
     @Override
@@ -45,12 +57,14 @@ public class FactionAllySettingsPage extends InteractiveCustomUIPage<FactionAlly
         @Nonnull UIEventBuilder eventBuilder,
         @Nonnull Store<EntityStore> store
     ) {
-        ConfigUtil.debug("[AllySettings] build() called; allyFactionId=" + allyFactionId + ", ref.valid=" + (ref != null && ref.isValid()));
+        ConfigUtil.debug("[AllySettings] build() called; allyFactionId=" + allyFactionId + ", contextFactionId=" + contextFactionId + ", ref.valid=" + (ref != null && ref.isValid()));
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
+        FactionInfo faction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
         FactionInfo allyFaction = factionManager.getFactionById(allyFactionId);
-        ConfigUtil.debug("[AllySettings] build() faction=" + (faction != null ? faction.getName() : "null") + ", allyFaction=" + (allyFaction != null ? allyFaction.getName() : "null"));
+        ConfigUtil.debug("[AllySettings] build() faction=" + (faction != null ? faction.getName() : "null") + " (contextFactionId=" + contextFactionId + ") allyFaction=" + (allyFaction != null ? allyFaction.getName() : "null"));
 
         commandBuilder.append("Pages/FactionAllySettingsPage.ui");
 
@@ -67,7 +81,7 @@ public class FactionAllySettingsPage extends InteractiveCustomUIPage<FactionAlly
             return;
         }
 
-        boolean canManageAllies = PermissionUtil.canManageAlliesInFaction(playerUuid, faction);
+        boolean canManageAllies = (contextFactionId != null) || PermissionUtil.canManageAlliesInFaction(playerUuid, faction);
         AllySettings settings = factionManager.getAllySettings(faction.getId(), allyFactionId);
         if (settings == null) settings = new AllySettings();
 
@@ -110,12 +124,14 @@ public class FactionAllySettingsPage extends InteractiveCustomUIPage<FactionAlly
 
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo faction = factionManager.getFactionFromPlayer(playerUuid);
+        FactionInfo faction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
         if (faction == null) {
             player.getPageManager().setPage(ref, store, Page.None);
             return;
         }
-        if (!PermissionUtil.canManageAlliesInFaction(playerUuid, faction)) {
+        if (contextFactionId == null && !PermissionUtil.canManageAlliesInFaction(playerUuid, faction)) {
             player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.ally_settings.no_permission")).color(Color.RED));
             return;
         }

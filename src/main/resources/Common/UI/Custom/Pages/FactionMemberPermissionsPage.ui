@@ -263,6 +263,42 @@ $C.@PageOverlay {
             Anchor: (Left: 10);
           }
         }
+
+        Group #setHomeGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #SetHomeCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #setHomeLabel {
+            Text: "Set Faction Home";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
+
+        Group #homeGroup {
+          LayoutMode: Right;
+          Anchor: (Height: 30);
+
+          CheckBox #HomeCheckbox {
+            Anchor: (Width: 20, Height: 20);
+          }
+
+          Label #homeLabel {
+            Text: "Use Faction Home";
+            Style: (
+              FontSize: 14,
+              TextColor: #CCCCCC
+            );
+            Anchor: (Left: 10);
+          }
+        }
       }
 
       Group #spacer {

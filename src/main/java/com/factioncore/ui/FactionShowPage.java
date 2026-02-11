@@ -504,7 +504,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
                 return;
             }
             
-            FactionMemberPermissionsPage permissionsPage = new FactionMemberPermissionsPage(playerRef, data.memberUuid);
+            FactionMemberPermissionsPage permissionsPage = new FactionMemberPermissionsPage(playerRef, data.memberUuid, adminViewFactionId);
             player.getPageManager().openCustomPage(ref, store, permissionsPage);
             return;
         }

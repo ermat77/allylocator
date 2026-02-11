@@ -211,6 +211,28 @@ public class DatabaseManager {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_pending_ally_requests_target ON pending_ally_requests(target_faction_id)");
 
             migrateAllySettingsColumns(statement);
+            migrateFactionHomeColumns(statement);
+        }
+    }
+
+    /**
+     * Adds faction home columns to factions table if missing (migration for existing DBs).
+     */
+    private void migrateFactionHomeColumns(Statement statement) throws SQLException {
+        String[] columns = {
+            "home_dimension TEXT",
+            "home_x REAL",
+            "home_y REAL",
+            "home_z REAL"
+        };
+        for (String colDef : columns) {
+            try {
+                statement.execute("ALTER TABLE factions ADD COLUMN " + colDef);
+            } catch (SQLException e) {
+                if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("duplicate column")) {
+                    throw e;
+                }
+            }
         }
     }
 
@@ -351,6 +373,15 @@ public class DatabaseManager {
                         faction.setModifiedDate(LocalDateTime.parse(modifiedDateStr, DATE_FORMATTER));
                     }
                     
+                    // Load faction home (columns added by migrateFactionHomeColumns)
+                    String homeDim = rs.getString("home_dimension");
+                    if (homeDim != null && !homeDim.isEmpty()) {
+                        faction.setHome(homeDim,
+                            rs.getDouble("home_x"),
+                            rs.getDouble("home_y"),
+                            rs.getDouble("home_z"));
+                    }
+                    
                     // Load members
                     try (PreparedStatement ps = connection.prepareStatement(
                             "SELECT member_uuid FROM faction_members WHERE faction_id = ?")) {
@@ -373,19 +404,7 @@ public class DatabaseManager {
                         }
                     }
                     
-                    // Load permissions
-                    try (PreparedStatement ps = connection.prepareStatement(
-                            "SELECT member_uuid, permission FROM faction_permissions WHERE faction_id = ?")) {
-                        ps.setString(1, id.toString());
-                        try (ResultSet rsPerms = ps.executeQuery()) {
-                            while (rsPerms.next()) {
-                                UUID memberUuid = UUID.fromString(rsPerms.getString("member_uuid"));
-                                String permission = rsPerms.getString("permission");
-                                faction.grantMemberPermission(memberUuid, permission);
-                            }
-                        }
-                    }
-                    
+                    // Member permissions are loaded via loadMemberPermissionsAsync into FactionManager.
                     factions.put(id, faction);
                 }
             } catch (SQLException e) {
@@ -572,6 +591,30 @@ public class DatabaseManager {
         }, loadExecutor);
     }
     
+    /**
+     * Loads member permissions from the database asynchronously.
+     * @return CompletableFuture with map keyed by "factionId_memberUuid" -> Set of permission strings
+     */
+    public CompletableFuture<Map<String, Set<String>>> loadMemberPermissionsAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<String, Set<String>> map = new HashMap<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery("SELECT faction_id, member_uuid, permission FROM faction_permissions")) {
+                while (rs.next()) {
+                    String factionId = rs.getString("faction_id");
+                    String memberUuid = rs.getString("member_uuid");
+                    String permission = rs.getString("permission");
+                    String key = factionId + "_" + memberUuid;
+                    map.computeIfAbsent(key, k -> new HashSet<>()).add(permission);
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading member permissions: " + e.getMessage());
+                throw new RuntimeException("Failed to load member permissions", e);
+            }
+            return map;
+        }, loadExecutor);
+    }
+    
     // ========== Write Operations (Queued) ==========
     
     /**
@@ -580,7 +623,7 @@ public class DatabaseManager {
     public void saveFaction(FactionInfo faction) {
         writeQueue.offer(new WriteOperation("saveFaction", conn -> {
             try (PreparedStatement ps = conn.prepareStatement(
-                    "REPLACE INTO factions (id, owner, name, description, color, created_date, modified_date) VALUES (?, ?, ?, ?, ?, ?, ?)")) {
+                    "REPLACE INTO factions (id, owner, name, description, color, created_date, modified_date, home_dimension, home_x, home_y, home_z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
                 ps.setString(1, faction.getId().toString());
                 ps.setString(2, faction.getOwner().toString());
                 ps.setString(3, faction.getName());
@@ -590,6 +633,17 @@ public class DatabaseManager {
                     faction.getCreatedDate().format(DATE_FORMATTER) : LocalDateTime.now().format(DATE_FORMATTER));
                 ps.setString(7, faction.getModifiedDate() != null ? 
                     faction.getModifiedDate().format(DATE_FORMATTER) : LocalDateTime.now().format(DATE_FORMATTER));
+                if (faction.hasHome()) {
+                    ps.setString(8, faction.getHomeDimension());
+                    ps.setDouble(9, faction.getHomeX());
+                    ps.setDouble(10, faction.getHomeY());
+                    ps.setDouble(11, faction.getHomeZ());
+                } else {
+                    ps.setString(8, null);
+                    ps.setDouble(9, 0);
+                    ps.setDouble(10, 0);
+                    ps.setDouble(11, 0);
+                }
                 ps.executeUpdate();
             }
             
@@ -624,25 +678,7 @@ public class DatabaseManager {
                 }
                 insertGeneral.executeBatch();
             }
-            
-            // Save permissions
-            try (PreparedStatement deletePerms = conn.prepareStatement(
-                    "DELETE FROM faction_permissions WHERE faction_id = ?")) {
-                deletePerms.setString(1, faction.getId().toString());
-                deletePerms.executeUpdate();
-            }
-            try (PreparedStatement insertPerm = conn.prepareStatement(
-                    "INSERT INTO faction_permissions (faction_id, member_uuid, permission) VALUES (?, ?, ?)")) {
-                for (Map.Entry<UUID, Set<String>> entry : faction.getMemberPermissionsMap().entrySet()) {
-                    for (String permission : entry.getValue()) {
-                        insertPerm.setString(1, faction.getId().toString());
-                        insertPerm.setString(2, entry.getKey().toString());
-                        insertPerm.setString(3, permission);
-                        insertPerm.addBatch();
-                    }
-                }
-                insertPerm.executeBatch();
-            }
+            // Member permissions are persisted via saveAllMemberPermissions (FactionManager map).
         }));
     }
     
@@ -853,6 +889,38 @@ public class DatabaseManager {
                         ps.setInt(10, settings.isAllowPlaceBlock() ? 1 : 0);
                         ps.setInt(11, settings.isAllowBreakBlock() ? 1 : 0);
                         ps.addBatch();
+                    }
+                    ps.executeBatch();
+                }
+            }
+        }));
+    }
+    
+    /**
+     * Queues save of all member permissions (replaces all rows in faction_permissions).
+     * Map key format: "factionId_memberUuid" -> Set of permission strings.
+     */
+    public void saveAllMemberPermissions(Map<String, Set<String>> memberPermissions) {
+        Map<String, Set<String>> snapshot = new HashMap<>();
+        for (Map.Entry<String, Set<String>> entry : memberPermissions.entrySet()) {
+            snapshot.put(entry.getKey(), new HashSet<>(entry.getValue()));
+        }
+        writeQueue.offer(new WriteOperation("saveAllMemberPermissions", conn -> {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("DELETE FROM faction_permissions");
+            }
+            if (!snapshot.isEmpty()) {
+                try (PreparedStatement ps = conn.prepareStatement(
+                        "INSERT INTO faction_permissions (faction_id, member_uuid, permission) VALUES (?, ?, ?)")) {
+                    for (Map.Entry<String, Set<String>> entry : snapshot.entrySet()) {
+                        String[] parts = entry.getKey().split("_", 2);
+                        if (parts.length != 2) continue;
+                        for (String permission : entry.getValue()) {
+                            ps.setString(1, parts[0]);
+                            ps.setString(2, parts[1]);
+                            ps.setString(3, permission);
+                            ps.addBatch();
+                        }
                     }
                     ps.executeBatch();
                 }

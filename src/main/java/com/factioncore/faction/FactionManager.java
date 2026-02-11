@@ -69,6 +69,8 @@ public class FactionManager {
     private final Map<UUID, Set<UUID>> factionEnemies;
     private final List<PendingAllyRequest> pendingAllyRequests;
     private final Map<String, AllySettings> allySettings; // key: factionId_allyFactionId
+    /** Member permissions: key factionId_memberUuid -> set of permission strings (e.g. factioncore.ownfaction.place_block). */
+    private final Map<String, Set<String>> memberPermissions;
     
     // Database manager (ONLY for persistence)
     private final DatabaseManager databaseManager;
@@ -98,6 +100,7 @@ public class FactionManager {
         this.factionEnemies = new ConcurrentHashMap<>();
         this.pendingAllyRequests = Collections.synchronizedList(new ArrayList<>());
         this.allySettings = new ConcurrentHashMap<>();
+        this.memberPermissions = new ConcurrentHashMap<>();
 
         // Initialize DatabaseManager (non-blocking - just creates instance)
         this.databaseManager = new DatabaseManager(getLogger());
@@ -146,7 +149,8 @@ public class FactionManager {
             databaseManager.loadFactionAlliesAsync().thenAccept(this::populateAllies),
             databaseManager.loadFactionEnemiesAsync().thenAccept(this::populateEnemies),
             databaseManager.loadPendingAllyRequestsAsync().thenAccept(this::populatePendingAllyRequests),
-            databaseManager.loadAllySettingsAsync().thenAccept(this::populateAllySettings)
+            databaseManager.loadAllySettingsAsync().thenAccept(this::populateAllySettings),
+            databaseManager.loadMemberPermissionsAsync().thenAccept(this::populateMemberPermissions)
         ).thenRun(() -> {
             ConfigUtil.debug("FactionManager: Async initialization completed");
             getLogger().at(Level.INFO).log("FactionManager initialized: " + factions.size() + " factions, " + 
@@ -236,6 +240,17 @@ public class FactionManager {
     private void populateAllySettings(Map<String, AllySettings> loaded) {
         ConfigUtil.debug("populateAllySettings: loading " + loaded.size() + " settings");
         allySettings.putAll(loaded);
+    }
+    
+    /**
+     * Populates member permissions map from loaded data.
+     */
+    private void populateMemberPermissions(Map<String, Set<String>> loaded) {
+        ConfigUtil.debug("populateMemberPermissions: loading " + loaded.size() + " entries");
+        for (Map.Entry<String, Set<String>> e : loaded.entrySet()) {
+            memberPermissions.put(e.getKey(), ConcurrentHashMap.newKeySet());
+            memberPermissions.get(e.getKey()).addAll(e.getValue());
+        }
     }
     
     /**
@@ -400,6 +415,29 @@ public class FactionManager {
     }
     
     /**
+     * Sets the faction home location. Persisted by the periodic save.
+     * 
+     * @param factionId The faction ID
+     * @param dimension World/dimension name
+     * @param x X coordinate
+     * @param y Y coordinate
+     * @param z Z coordinate
+     * @return true if the faction existed and home was set
+     */
+    public boolean setFactionHome(UUID factionId, String dimension, double x, double y, double z) {
+        if (factionId == null) {
+            return false;
+        }
+        FactionInfo faction = factions.get(factionId);
+        if (faction == null) {
+            return false;
+        }
+        faction.setHome(dimension, x, y, z);
+        markDirty();
+        return true;
+    }
+    
+    /**
      * Gets a faction by its name (case-insensitive).
      * 
      * @param name The faction name
@@ -460,9 +498,6 @@ public class FactionManager {
 
         // Apply default member interact permissions from config (factioncore.ownfaction.* with context faction=factionId)
         applyDefaultMemberInteractPermissions(playerUuid, factionId);
-
-        // Apply ally permissions from every faction that has this faction as ally (context faction=that faction name)
-        com.factioncore.permission.AllyPermissionService.getInstance().applyAllyPermissionsFromFactionsToUser(playerUuid, factionId);
         
         // Clean up pending invites for the player (they now have a faction)
         clearPendingInvitesForPlayer(playerUuid);
@@ -530,8 +565,6 @@ public class FactionManager {
         if (faction != null) {
             // Revoke all own-faction permissions for this player (cleanup)
             com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(playerUuid, factionId);
-            // Revoke all ally permissions this player had (context faction=X for every faction X that had this faction as ally)
-            com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(playerUuid, factionId);
             
             // If player is the owner, disband the faction
             if (faction.isOwner(playerUuid)) {
@@ -604,17 +637,10 @@ public class FactionManager {
         // Revoke all faction permissions for all members (cleanup)
         for (UUID member : faction.getMembers()) {
             com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(member, factionId);
-            com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(member, factionId);
         }
         // Also revoke for owner
         if (faction.getOwner() != null) {
             com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(faction.getOwner(), factionId);
-            com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(faction.getOwner(), factionId);
-        }
-        // Revoke ally permissions for all members of factions that had this faction as ally (context faction=disbanded faction name)
-        com.factioncore.permission.AllyPermissionService aps = com.factioncore.permission.AllyPermissionService.getInstance();
-        for (UUID otherId : getFactionIdsThatHaveAsAlly(factionId)) {
-            aps.revokeAllyPermissionsForFaction(otherId, factionId);
         }
         
         // Remove all members from playerToFaction map
@@ -675,17 +701,10 @@ public class FactionManager {
             // Revoke all faction permissions for all members (cleanup)
             for (UUID member : faction.getMembers()) {
                 com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(member, factionId);
-                com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(member, factionId);
             }
             // Also revoke for owner
             if (faction.getOwner() != null) {
                 com.factioncore.permission.FactionPermissionManager.getInstance().revokeAllFactionPermissions(faction.getOwner(), factionId);
-                com.factioncore.permission.AllyPermissionService.getInstance().revokeAllAllyPermissionsForUser(faction.getOwner(), factionId);
-            }
-            // Revoke ally permissions for all members of factions that had this faction as ally
-            com.factioncore.permission.AllyPermissionService aps = com.factioncore.permission.AllyPermissionService.getInstance();
-            for (UUID otherId : getFactionIdsThatHaveAsAlly(factionId)) {
-                aps.revokeAllyPermissionsForFaction(otherId, factionId);
             }
             
             // Remove all members from playerToFaction map
@@ -838,10 +857,6 @@ public class FactionManager {
         factionAllies.computeIfAbsent(acceptorFactionId, k -> ConcurrentHashMap.newKeySet()).add(requesterFactionId);
         factionAllies.computeIfAbsent(requesterFactionId, k -> ConcurrentHashMap.newKeySet()).add(acceptorFactionId);
         markDirty();
-        // Apply default ally permissions (from current AllySettings, or empty = all false) to both factions' members
-        com.factioncore.permission.AllyPermissionService aps = com.factioncore.permission.AllyPermissionService.getInstance();
-        aps.syncAllyFactionMembers(acceptorFactionId, requesterFactionId, getAllySettings(acceptorFactionId, requesterFactionId));
-        aps.syncAllyFactionMembers(requesterFactionId, acceptorFactionId, getAllySettings(requesterFactionId, acceptorFactionId));
         return true;
     }
 
@@ -859,9 +874,6 @@ public class FactionManager {
         allySettings.remove(factionId.toString() + "_" + allyFactionId.toString());
         allySettings.remove(allyFactionId.toString() + "_" + factionId.toString());
         markDirty();
-        com.factioncore.permission.AllyPermissionService aps = com.factioncore.permission.AllyPermissionService.getInstance();
-        aps.revokeAllyPermissionsForFaction(factionId, allyFactionId);
-        aps.revokeAllyPermissionsForFaction(allyFactionId, factionId);
         return true;
     }
     
@@ -940,9 +952,21 @@ public class FactionManager {
         AllySettings s = allySettings.get(key);
         return s != null ? s : new AllySettings();
     }
+
+    /**
+     * Returns true if the in-memory ally settings map has an entry for (factionId, allyFactionId).
+     * Useful for debugging (distinguish "key missing" from "key present but allowPlaceBlock=false").
+     */
+    public boolean hasAllySettingsEntry(UUID factionId, UUID allyFactionId) {
+        if (factionId == null || allyFactionId == null) return false;
+        String key = factionId.toString() + "_" + allyFactionId.toString();
+        return allySettings.containsKey(key);
+    }
     
     /**
      * Sets ally settings for (our faction, ally faction).
+     * Refreshes map marker filters for the ally faction so they see/stop seeing our members
+     * when "Share faction members' PlayerMarkers" is toggled.
      */
     public void setAllySettings(UUID factionId, UUID allyFactionId, AllySettings settings) {
         if (factionId == null || allyFactionId == null || settings == null) return;
@@ -953,7 +977,55 @@ public class FactionManager {
                 settings.isAllowUseChair(), settings.isAllowUsePortal(),
                 settings.isAllowPlaceBlock(), settings.isAllowBreakBlock()));
         markDirty();
-        com.factioncore.permission.AllyPermissionService.getInstance().syncAllyFactionMembers(factionId, allyFactionId, settings);
+        FactionInfo allyFaction = getFactionById(allyFactionId);
+        if (allyFaction != null) {
+            com.factioncore.systems.marker.FactionMarkerFilterService.updateFiltersForFaction(allyFaction);
+        }
+    }
+    
+    // ========== Member Permissions (in-memory, persisted via saveAllMemberPermissions) ==========
+    
+    /**
+     * Gets member permissions for (factionId, memberUuid). Returns a copy of the set, or empty set if absent.
+     */
+    public Set<String> getMemberPermissions(UUID factionId, UUID memberUuid) {
+        if (factionId == null || memberUuid == null) return new HashSet<>();
+        String key = factionId.toString() + "_" + memberUuid.toString();
+        Set<String> perms = memberPermissions.get(key);
+        return perms != null ? new HashSet<>(perms) : new HashSet<>();
+    }
+    
+    /**
+     * Sets member permissions for (factionId, memberUuid). Replaces existing set.
+     */
+    public void setMemberPermissions(UUID factionId, UUID memberUuid, Set<String> permissions) {
+        if (factionId == null || memberUuid == null) return;
+        String key = factionId.toString() + "_" + memberUuid.toString();
+        if (permissions == null || permissions.isEmpty()) {
+            memberPermissions.remove(key);
+        } else {
+            Set<String> copy = ConcurrentHashMap.newKeySet();
+            copy.addAll(permissions);
+            memberPermissions.put(key, copy);
+        }
+        markDirty();
+    }
+    
+    /**
+     * Returns true if the member has the given permission in the faction.
+     */
+    public boolean hasMemberPermission(UUID factionId, UUID memberUuid, String permission) {
+        if (factionId == null || memberUuid == null || permission == null) return false;
+        return getMemberPermissions(factionId, memberUuid).contains(permission);
+    }
+    
+    /**
+     * Returns true if the in-memory member permissions map has an entry for (factionId, memberUuid).
+     */
+    public boolean hasMemberPermissionsEntry(UUID factionId, UUID memberUuid) {
+        if (factionId == null || memberUuid == null) return false;
+        String key = factionId.toString() + "_" + memberUuid.toString();
+        return memberPermissions.containsKey(key);
     }
     
     // ========== Chunk Claiming Methods ==========
@@ -994,6 +1066,7 @@ public class FactionManager {
                             databaseManager.saveAllFactionEnemies(factionEnemies);
                             databaseManager.saveAllPendingAllyRequests(new ArrayList<>(pendingAllyRequests));
                             databaseManager.saveAllAllySettings(allySettings);
+                            databaseManager.saveAllMemberPermissions(memberPermissions);
                             
                             ConfigUtil.debug("Periodic save: finished queuing all data saves");
                         }

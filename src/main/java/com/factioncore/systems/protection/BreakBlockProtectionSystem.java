@@ -2,6 +2,7 @@ package com.factioncore.systems.protection;
 
 import com.factioncore.Main;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.ArchetypeChunk;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.component.CommandBuffer;
@@ -106,13 +107,13 @@ public class BreakBlockProtectionSystem extends EntityEventSystem<EntityStore, B
         int chunkZ = blockZ >> 4;
         ConfigUtil.verboseDebug(PREFIX + "player=" + playerUuid + " dimension=" + dimension + " blockPos=(" + blockX + "," + blockZ + ") chunk=(" + chunkX + "," + chunkZ + ")");
         
-        // Check if block break is allowed
+        // Check if block break is allowed (permission key path: same-faction + ally settings)
         boolean allowed = ProtectionService.isAllowedToInteract(
             playerUuid,
             dimension,
             blockX,
             blockZ,
-            ProtectionService::isBlockBreakEnabled
+            PermissionUtil.INTERACT_KEY_BREAK_BLOCK
         );
         
         ConfigUtil.verboseDebug(PREFIX + "isAllowedToInteract(break)=" + allowed + " for player=" + playerUuid);

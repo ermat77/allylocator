@@ -1,5 +1,6 @@
 package com.factioncore.systems.protection;
 
+import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.CommandBuffer;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.component.dependency.Dependency;
@@ -47,7 +48,7 @@ public class GlobalDamageBlockProtectionSystem extends WorldEventSystem<EntitySt
         int x = event.getTargetBlock().getX();
         int z = event.getTargetBlock().getZ();
 
-        if (!ProtectionService.isAllowedToInteract(null, worldName, x, z, ProtectionService::isBlockBreakEnabled)) {
+        if (!ProtectionService.isAllowedToInteract(null, worldName, x, z, PermissionUtil.INTERACT_KEY_BREAK_BLOCK)) {
             event.setCancelled(true);
         }
     }

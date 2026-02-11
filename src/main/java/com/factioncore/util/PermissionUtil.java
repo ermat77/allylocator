@@ -41,7 +41,12 @@ public class PermissionUtil {
      * Permission constant for viewing faction information.
      */
     public static final String PERM_SHOW_FACTION = "factioncore.player.show";
-    
+
+    /**
+     * Permission constant for using /f prism (enter/leave prism world).
+     */
+    public static final String PERM_PRISM = "factioncore.player.prism";
+
     /**
      * Permission constant for claiming chunks.
      */
@@ -82,6 +87,12 @@ public class PermissionUtil {
      */
     public static final String PERM_VIEW_MEMBERS = "factioncore.player.members";
     
+    /**
+     * Permission constant for using the /spawn command (delayed teleport to world spawn).
+     * Included in factioncore.player.* so players with that group can use /spawn.
+     */
+    public static final String PERM_SPAWN = "factioncore.player.spawn";
+    
     // Faction member permission constants (granted by faction owner)
     public static final String FACTION_PERM_RENAME = "ownfaction.rename";
     public static final String FACTION_PERM_CHANGE_COLOR = "ownfaction.change_color";
@@ -91,6 +102,8 @@ public class PermissionUtil {
     public static final String FACTION_PERM_MANAGE_ENEMIES = "ownfaction.manage_enemies";
     public static final String FACTION_PERM_CLAIM_CHUNK = "ownfaction.claim_chunk";
     public static final String FACTION_PERM_UNCLAIM_CHUNK = "ownfaction.unclaim_chunk";
+    public static final String FACTION_PERM_SET_HOME = "ownfaction.set_home";
+    public static final String FACTION_PERM_HOME = "ownfaction.home";
 
     /** Own-faction interaction permissions (context faction=faction-uuid). */
     public static final String FACTION_PERM_OPEN_CHEST = "factioncore.ownfaction.open_chest";
@@ -441,7 +454,17 @@ public class PermissionUtil {
         // Available to everyone by default - always return true
         return true;
     }
-    
+
+    /**
+     * Checks if a player has permission to use /f prism (enter/leave prism).
+     *
+     * @param playerUuid The UUID of the player
+     * @return true if the player has permission
+     */
+    public static boolean canUsePrism(UUID playerUuid) {
+        return hasPermission(playerUuid, PERM_PRISM);
+    }
+
     /**
      * Checks if a player has permission to claim chunks.
      * 
@@ -520,6 +543,14 @@ public class PermissionUtil {
      */
     public static boolean canViewMembers(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_VIEW_MEMBERS);
+    }
+    
+    /**
+     * Checks if a player has permission to use the /spawn command.
+     * Requires factioncore.player.spawn (included in factioncore.player.*).
+     */
+    public static boolean canUseSpawn(UUID playerUuid) {
+        return hasPermission(playerUuid, PERM_SPAWN);
     }
     
     // Admin permission check methods (for actions on ANY faction)
@@ -826,5 +857,39 @@ public class PermissionUtil {
         }
         // Check faction member permission (granted by owner) via FactionPermissionManager
         return com.factioncore.permission.FactionPermissionManager.getInstance().hasPermission(playerUuid, FACTION_PERM_UNCLAIM_CHUNK, faction.getId());
+    }
+    
+    /**
+     * Checks if a player can set the faction home (/f sethome).
+     * Checks: owner status, admin permission, or faction member permission.
+     */
+    public static boolean canSetHomeInFaction(UUID playerUuid, com.factioncore.faction.FactionInfo faction) {
+        if (faction == null) {
+            return false;
+        }
+        if (faction.isOwner(playerUuid)) {
+            return true;
+        }
+        if (canManageMemberPermissionsAdmin(playerUuid)) {
+            return true;
+        }
+        return com.factioncore.permission.FactionPermissionManager.getInstance().hasPermission(playerUuid, FACTION_PERM_SET_HOME, faction.getId());
+    }
+    
+    /**
+     * Checks if a player can use faction home (/f home).
+     * Checks: owner status, admin permission, or faction member permission.
+     */
+    public static boolean canUseHomeInFaction(UUID playerUuid, com.factioncore.faction.FactionInfo faction) {
+        if (faction == null) {
+            return false;
+        }
+        if (faction.isOwner(playerUuid)) {
+            return true;
+        }
+        if (canManageMemberPermissionsAdmin(playerUuid)) {
+            return true;
+        }
+        return com.factioncore.permission.FactionPermissionManager.getInstance().hasPermission(playerUuid, FACTION_PERM_HOME, faction.getId());
     }
 }
