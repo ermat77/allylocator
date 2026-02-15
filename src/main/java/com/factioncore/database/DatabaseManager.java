@@ -6,6 +6,7 @@ import com.factioncore.diplomacy.AllySettings;
 import com.factioncore.diplomacy.PendingAllyRequest;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.invite.PendingInvite;
+import com.factioncore.prism.PrismRecord;
 import com.hypixel.hytale.logger.HytaleLogger;
 
 import java.nio.file.Files;
@@ -200,6 +201,28 @@ public class DatabaseManager {
                     "FOREIGN KEY (ally_faction_id) REFERENCES factions(id) ON DELETE CASCADE" +
                     ")");
             
+            // Prisms table (one prism per position; one per chunk enforced in PrismManager).
+            // uuid = prism id; created_at = epoch ms; score = 1 point per minute computed on interaction.
+            statement.execute("CREATE TABLE IF NOT EXISTS prisms (" +
+                    "world_name TEXT," +
+                    "x INTEGER," +
+                    "y INTEGER," +
+                    "z INTEGER," +
+                    "uuid TEXT," +
+                    "faction_id TEXT," +
+                    "player_uuid TEXT," +
+                    "created_at INTEGER," +
+                    "time_alive INTEGER DEFAULT 0," +
+                    "PRIMARY KEY (world_name, x, y, z)" +
+                    ")");
+            
+            // Faction points table (FP total per faction)
+            statement.execute("CREATE TABLE IF NOT EXISTS faction_points (" +
+                    "faction_id TEXT PRIMARY KEY," +
+                    "points INTEGER NOT NULL DEFAULT 0," +
+                    "FOREIGN KEY (faction_id) REFERENCES factions(id) ON DELETE CASCADE" +
+                    ")");
+            
             // Create indexes for performance
             statement.execute("CREATE INDEX IF NOT EXISTS idx_faction_members_faction_id ON faction_members(faction_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_faction_permissions_faction_id ON faction_permissions(faction_id)");
@@ -209,9 +232,26 @@ public class DatabaseManager {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_faction_enemies_faction_id ON faction_enemies(faction_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_pending_ally_requests_requester ON pending_ally_requests(requester_faction_id)");
             statement.execute("CREATE INDEX IF NOT EXISTS idx_pending_ally_requests_target ON pending_ally_requests(target_faction_id)");
+            statement.execute("CREATE INDEX IF NOT EXISTS idx_prisms_world ON prisms(world_name)");
 
+            migratePrismColumns(statement);
             migrateAllySettingsColumns(statement);
             migrateFactionHomeColumns(statement);
+        }
+    }
+
+    /**
+     * Adds uuid and created_at to prisms table if missing (migration for existing DBs).
+     */
+    private void migratePrismColumns(Statement statement) throws SQLException {
+        for (String colDef : new String[] { "uuid TEXT", "created_at INTEGER" }) {
+            try {
+                statement.execute("ALTER TABLE prisms ADD COLUMN " + colDef);
+            } catch (SQLException e) {
+                if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("duplicate column")) {
+                    throw e;
+                }
+            }
         }
     }
 
@@ -450,6 +490,72 @@ public class DatabaseManager {
                 throw new RuntimeException("Failed to load claims", e);
             }
             return claims;
+        }, loadExecutor);
+    }
+    
+    /**
+     * Loads all prisms from the database asynchronously (startup only).
+     * If created_at is null (legacy row), derives it from time_alive so score stays correct.
+     *
+     * @return CompletableFuture with list of PrismRecord
+     */
+    public CompletableFuture<List<PrismRecord>> loadPrismsAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<PrismRecord> list = new ArrayList<>();
+            long nowMs = System.currentTimeMillis();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery(
+                         "SELECT world_name, x, y, z, uuid, faction_id, player_uuid, created_at, time_alive FROM prisms")) {
+                while (rs.next()) {
+                    String uuidStr = rs.getString("uuid");
+                    UUID id = uuidStr != null && !uuidStr.isEmpty()
+                            ? UUID.fromString(uuidStr)
+                            : UUID.randomUUID();
+                    long createdMs;
+                    long createdAt = rs.getLong("created_at");
+                    if (rs.wasNull() || createdAt <= 0) {
+                        int timeAlive = rs.getInt("time_alive");
+                        createdMs = nowMs - (timeAlive * 60_000L);
+                    } else {
+                        createdMs = createdAt;
+                    }
+                    list.add(new PrismRecord(
+                            rs.getString("world_name"),
+                            rs.getInt("x"),
+                            rs.getInt("y"),
+                            rs.getInt("z"),
+                            id,
+                            UUID.fromString(rs.getString("faction_id")),
+                            UUID.fromString(rs.getString("player_uuid")),
+                            createdMs
+                    ));
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading prisms: " + e.getMessage());
+                throw new RuntimeException("Failed to load prisms", e);
+            }
+            return list;
+        }, loadExecutor);
+    }
+    
+    /**
+     * Loads all faction points from the database asynchronously (startup only).
+     *
+     * @return CompletableFuture with map of factionId -> total FP
+     */
+    public CompletableFuture<Map<UUID, Integer>> loadFactionPointsAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            Map<UUID, Integer> map = new HashMap<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery("SELECT faction_id, points FROM faction_points")) {
+                while (rs.next()) {
+                    map.put(UUID.fromString(rs.getString("faction_id")), rs.getInt("points"));
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading faction points: " + e.getMessage());
+                throw new RuntimeException("Failed to load faction points", e);
+            }
+            return map;
         }, loadExecutor);
     }
     
@@ -731,6 +837,57 @@ public class DatabaseManager {
                 ps.setString(1, dimension);
                 ps.setInt(2, chunkX);
                 ps.setInt(3, chunkZ);
+                ps.executeUpdate();
+            }
+        }));
+    }
+    
+    /**
+     * Queues a prism insert or replace. Score is computed from created_at on interaction (1 point per minute).
+     */
+    public void insertOrReplacePrism(String worldName, int x, int y, int z,
+                                     UUID prismId, UUID factionId, UUID playerUuid, long createdAtMs) {
+        writeQueue.offer(new WriteOperation("insertOrReplacePrism", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "REPLACE INTO prisms (world_name, x, y, z, uuid, faction_id, player_uuid, created_at, time_alive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)")) {
+                ps.setString(1, worldName);
+                ps.setInt(2, x);
+                ps.setInt(3, y);
+                ps.setInt(4, z);
+                ps.setString(5, prismId.toString());
+                ps.setString(6, factionId.toString());
+                ps.setString(7, playerUuid.toString());
+                ps.setLong(8, createdAtMs);
+                ps.executeUpdate();
+            }
+        }));
+    }
+    
+    /**
+     * Queues a prism delete by position.
+     */
+    public void deletePrism(String worldName, int x, int y, int z) {
+        writeQueue.offer(new WriteOperation("deletePrism", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "DELETE FROM prisms WHERE world_name = ? AND x = ? AND y = ? AND z = ?")) {
+                ps.setString(1, worldName);
+                ps.setInt(2, x);
+                ps.setInt(3, y);
+                ps.setInt(4, z);
+                ps.executeUpdate();
+            }
+        }));
+    }
+    
+    /**
+     * Queues a faction points save (REPLACE into faction_points).
+     */
+    public void saveFactionPoints(UUID factionId, int points) {
+        writeQueue.offer(new WriteOperation("saveFactionPoints", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "REPLACE INTO faction_points (faction_id, points) VALUES (?, ?)")) {
+                ps.setString(1, factionId.toString());
+                ps.setInt(2, points);
                 ps.executeUpdate();
             }
         }));

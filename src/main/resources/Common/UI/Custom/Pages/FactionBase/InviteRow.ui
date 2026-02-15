@@ -1,0 +1,18 @@
+$C = "../../Common.ui";
+
+Group {
+  LayoutMode: Right;
+  Anchor: (Height: 30);
+  
+  Label #InviteLabel {
+    Text: "";
+    FlexWeight: 1;
+    Anchor: (Vertical: 0);
+    Style: (VerticalAlignment: Center);
+  }
+
+  $C.@TextButton #CancelButton {
+    Text: "Cancel";
+    Anchor: (Vertical: 0);
+  }
+}

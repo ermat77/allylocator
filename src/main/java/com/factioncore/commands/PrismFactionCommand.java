@@ -1,6 +1,6 @@
 package com.factioncore.commands;
 
-import com.factioncore.ui.PrismPage;
+import com.factioncore.ui.factionprism.PrismPage;
 import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;

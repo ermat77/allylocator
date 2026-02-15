@@ -1,0 +1,34 @@
+$C = "../../Common.ui";
+
+Group {
+  LayoutMode: Right;
+  Anchor: (Height: 44);
+
+  Label #FactionLabel {
+    Text: "";
+    FlexWeight: 1;
+    Anchor: (Vertical: 0);
+    Style: (FontSize: 18, TextColor: #ffffff, VerticalAlignment: Center);
+  }
+
+  $C.@TextButton #MembersButton {
+    Text: "Members";
+    Anchor: (Width: 160, Height: 40, Vertical: 0);
+  }
+
+  Group { Anchor: (Width: 8); }
+
+  $C.@TextButton #SendAllyRequestButton {
+    Text: "Ally";
+    Visible: false;
+    Anchor: (Width: 120, Height: 40, Vertical: 0);
+  }
+
+  Group { Anchor: (Width: 8); }
+
+  $C.@CancelTextButton #DeclareEnemyButton {
+    Text: "Enemy";
+    Visible: false;
+    Anchor: (Width: 120, Height: 40, Vertical: 0);
+  }
+}

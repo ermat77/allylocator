@@ -1,0 +1,57 @@
+$C = "../../Common.ui";
+
+$C.@PageOverlay {
+
+  $C.@DecoratedContainer {
+    Anchor: (Width: 500, Height: 300);
+
+    #Title {
+      Group {
+        $C.@Title #TitleText {
+          @Text = "Create Faction";
+        }
+      }
+    }
+
+    #Content {
+      LayoutMode: Top;
+      Padding: (Left: 20, Right: 20, Top: 20, Bottom: 20);
+
+      Label #instructionsLabel {
+        Text: "Enter a name for your new faction:";
+        Style: (
+          FontSize: 16,
+          TextColor: #CCCCCC
+        );
+        Anchor: (Bottom: 10);
+      }
+
+      $C.@TextField #FactionNameInput {
+        Anchor: (Width: 0, Height: 35);
+        FlexWeight: 1;
+      }
+
+      Group #spacer {
+        FlexWeight: 1;
+      }
+
+      Group #ActionButtons {
+        LayoutMode: Right;
+        Anchor: (Bottom: 10);
+
+        $C.@TextButton #createButton {
+          Text: "Create";
+          Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
+        }
+
+        $C.@CancelTextButton #cancelButton {
+          Text: "Cancel";
+          Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
+          Anchor: (Right: 10);
+        }
+      }
+    }
+  }
+}
+
+$C.@BackButton {}

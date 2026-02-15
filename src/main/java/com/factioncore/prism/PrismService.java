@@ -1,6 +1,11 @@
 package com.factioncore.prism;
 
+import com.factioncore.faction.FactionInfo;
+import com.factioncore.faction.FactionManager;
+import com.factioncore.points.FactionPointsManager;
+import com.factioncore.systems.interaction.BlockUseOpenUISystem;
 import com.factioncore.util.ConfigUtil;
+
 import com.hypixel.hytale.codec.builder.BuilderCodec;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -20,6 +25,9 @@ import com.hypixel.hytale.server.core.universe.world.WorldConfig;
 import com.hypixel.hytale.server.core.universe.world.spawn.GlobalSpawnProvider;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.hypixel.hytale.server.core.universe.world.worldgen.provider.IWorldGenProvider;
+import com.hypixel.hytale.server.core.entity.entities.Player;
+import com.hypixel.hytale.server.core.inventory.ItemStack;
+import com.hypixel.hytale.server.core.inventory.container.CombinedItemContainer;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
@@ -227,6 +235,158 @@ public final class PrismService {
             throw new IllegalStateException("Prism prefab not found: " + PREFAB_KEY);
         }
         selection.placeNoReturn(prismWorld, new Vector3i(0, 0, 0), prismWorld.getEntityStore().getStore());
+    }
+
+    /**
+     * Harvests a prism block by ID: looks up the prism, verifies the player is in the prism's faction,
+     * computes time alive, awards FP to the prism's faction, then removes the block and DB record.
+     * Call from any UI or class when a player harvests a prism (e.g. PrismBlockPage Harvest button).
+     *
+     * @param prismId   the prism block's UUID (from {@link PrismRecord#getId()})
+     * @param playerUuid the UUID of the player performing the harvest (for faction membership check)
+     * @return the number of FP awarded, or 0 if prism not found, no points, or player not in prism's faction
+     */
+    public int harvestPrism(@Nonnull UUID prismId, @Nonnull UUID playerUuid) {
+        return harvestPrism(prismId, playerUuid, null, null);
+    }
+
+    /**
+     * Harvests a prism block. Removes the block in the world via setBlockToAir (ref/store are ignored; kept for API compatibility).
+     *
+     * @param prismId   the prism block's UUID (from {@link PrismRecord#getId()})
+     * @param playerUuid the UUID of the player performing the harvest (for faction membership check)
+     * @param ref       ignored (kept for compatibility with PrismBlockPage)
+     * @param store     ignored (kept for compatibility with PrismBlockPage)
+     * @return the number of FP awarded, or 0 if prism not found, no points, or player not in prism's faction
+     */
+    public int harvestPrism(
+            @Nonnull UUID prismId,
+            @Nonnull UUID playerUuid,
+            @Nullable Ref<EntityStore> ref,
+            @Nullable Store<EntityStore> store
+    ) {
+        PrismRecord prism = PrismManager.getInstance().getById(prismId);
+        if (prism == null) return 0;
+        FactionInfo playerFaction = FactionManager.getInstance().getFactionFromPlayer(playerUuid);
+        if (playerFaction == null || !playerFaction.getId().equals(prism.getFactionId())) {
+            return 0;
+        }
+        int timeAliveMinutes = prism.getScoreMinutes(System.currentTimeMillis());
+        if (timeAliveMinutes <= 0) return 0;
+        int multiplier = PrismMultiplierService.getInstance().getMultiplier(prism.getChunkX(), prism.getChunkZ());
+        int pointsToAdd = timeAliveMinutes * multiplier;
+        int earned = FactionPointsManager.getInstance().awardPoints(prism.getFactionId(), "harvestPrism", pointsToAdd);
+
+        String worldName = prism.getWorldName();
+        int x = prism.getX();
+        int y = prism.getY();
+        int z = prism.getZ();
+        PrismManager.getInstance().remove(worldName, new Vector3i(x, y, z));
+
+        World world = Universe.get().getWorld(worldName);
+        if (world != null) {
+            world.execute(() -> setBlockToAir(world, x, y, z));
+        }
+
+        return earned;
+    }
+
+    /**
+     * Cancels a prism: verifies the player is in the prism's faction, removes the prism from the world and DB,
+     * and gives one Prism Block item back to the player.
+     *
+     * @param prismId    the prism UUID (from {@link PrismRecord#getId()})
+     * @param playerUuid the player performing the cancel
+     * @param ref        player entity ref (for giving item)
+     * @param store      entity store
+     * @return true if cancel succeeded (prism removed and item given), false otherwise
+     */
+    public boolean cancelPrism(
+            @Nonnull UUID prismId,
+            @Nonnull UUID playerUuid,
+            @Nonnull Ref<EntityStore> ref,
+            @Nonnull Store<EntityStore> store
+    ) {
+        ConfigUtil.debug("[PrismCancel] cancelPrism called: prismId=" + prismId + " playerUuid=" + playerUuid
+                + " ref=" + ref + " ref.isValid()=" + (ref != null && ref.isValid()) + " store=" + (store != null));
+        PrismRecord prism = PrismManager.getInstance().getById(prismId);
+        if (prism == null) {
+            ConfigUtil.debug("[PrismCancel] prism not found for id=" + prismId + ", returning false");
+            return false;
+        }
+        FactionInfo playerFaction = FactionManager.getInstance().getFactionFromPlayer(playerUuid);
+        if (playerFaction == null || !playerFaction.getId().equals(prism.getFactionId())) {
+            ConfigUtil.debug("[PrismCancel] faction check failed: playerFaction=" + (playerFaction != null ? playerFaction.getId() : "null")
+                    + " prismFactionId=" + prism.getFactionId() + ", returning false");
+            return false;
+        }
+        String worldName = prism.getWorldName();
+        int x = prism.getX();
+        int y = prism.getY();
+        int z = prism.getZ();
+        PrismManager.getInstance().remove(worldName, new Vector3i(x, y, z));
+        ConfigUtil.debug("[PrismCancel] prism removed from manager, setting block to air at (" + x + "," + y + "," + z + ") world=" + worldName);
+
+        World world = Universe.get().getWorld(worldName);
+        if (world != null) {
+            world.execute(() -> setBlockToAir(world, x, y, z));
+        } else {
+            ConfigUtil.debug("[PrismCancel] world not found: " + worldName + ", cannot set block to air");
+        }
+
+        ConfigUtil.debug("[PrismCancel] calling givePrismBlockToPlayer");
+        givePrismBlockToPlayer(ref, store);
+        return true;
+    }
+
+    private static void givePrismBlockToPlayer(@Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store) {
+        ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: ref=" + ref + " ref.isValid()=" + (ref != null && ref.isValid()) + " store=" + (store != null));
+        Player player = store.getComponent(ref, Player.getComponentType());
+        if (player == null) {
+            ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: player component is null, cannot give item");
+            return;
+        }
+        ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: player obtained, getInventory()=" + (player.getInventory() != null));
+        try {
+            com.hypixel.hytale.server.core.inventory.Inventory inv = player.getInventory();
+            if (inv == null) {
+                ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: inventory is null");
+                return;
+            }
+            CombinedItemContainer combined = inv.getCombinedHotbarFirst();
+            ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: getCombinedHotbarFirst()=" + (combined != null));
+            // Use short item ID so client resolves it with mod namespace (Server/Item/Items/Prism_Block.json)
+            String prismItemId = "Prism_Block";
+            ItemStack stack = new ItemStack(prismItemId, 1);
+            ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: ItemStack created with id=" + prismItemId + " getItemId()=" + stack.getItemId() + " qty=" + stack.getQuantity());
+            if (combined != null) {
+                com.hypixel.hytale.server.core.inventory.transaction.ItemStackTransaction tx = combined.addItemStack(stack);
+                ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: combined.addItemStack result: remainder=" + (tx != null ? tx.getRemainder() : "null"));
+            } else {
+                com.hypixel.hytale.server.core.inventory.container.ItemContainer storage = inv.getStorage();
+                ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: using storage fallback, getStorage()=" + (storage != null));
+                if (storage != null) {
+                    com.hypixel.hytale.server.core.inventory.transaction.ItemStackTransaction tx = storage.addItemStack(stack);
+                    ConfigUtil.debug("[PrismCancel] givePrismBlockToPlayer: storage.addItemStack result: remainder=" + (tx != null ? tx.getRemainder() : "null"));
+                }
+            }
+        } catch (Exception e) {
+            ConfigUtil.debug("PrismService: givePrismBlockToPlayer failed: " + e.getMessage(), e);
+        }
+    }
+
+    /**
+     * Sets the block at (x,y,z) to air/empty. Uses lowercase "air" to avoid "Unknown key! Air"
+     * (engine rejects "hytale:air" / "Air"). If that fails, tries BlockType.EMPTY.getId().
+     */
+    private static void setBlockToAir(@Nonnull World world, int x, int y, int z) {
+        try {
+            world.setBlock(x, y, z, "air");
+        } catch (IllegalArgumentException e) {
+            com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType air = com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType.EMPTY;
+            String airId = (air != null && air.getId() != null) ? air.getId() : "air";
+            world.setBlock(x, y, z, airId);
+        }
     }
 
     @Nonnull

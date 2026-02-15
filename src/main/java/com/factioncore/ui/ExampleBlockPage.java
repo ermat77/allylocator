@@ -1,6 +1,5 @@
 package com.factioncore.ui;
 
-import com.factioncore.util.I18n;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
@@ -12,14 +11,13 @@ import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
-import com.factioncore.ui.events.ExampleBlockPageEventData;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 
 /**
- * Simple UI page opened when the player uses an interactable block (F key).
- * Shows a title and a Close button.
+ * Simple UI page opened when the player uses the interactive block (F key).
+ * Loads ExampleBlockPage.ui with a Close button.
  */
 public class ExampleBlockPage extends InteractiveCustomUIPage<ExampleBlockPageEventData> {
 
@@ -35,8 +33,6 @@ public class ExampleBlockPage extends InteractiveCustomUIPage<ExampleBlockPageEv
             @Nonnull Store<EntityStore> store
     ) {
         commandBuilder.append("Pages/ExampleBlockPage.ui");
-        commandBuilder.set("#Title #TitleText.Text", I18n.get("ui.block_example.title"));
-        commandBuilder.set("#CloseButton.Text", I18n.get("ui.block_example.close"));
         eventBuilder.addEventBinding(
                 CustomUIEventBindingType.Activating,
                 "#CloseButton",

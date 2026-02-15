@@ -1,0 +1,154 @@
+$C = "../../Common.ui";
+
+Group {
+  Anchor: (Width: 900, Height: 750);
+  Background: #141c26(0.98);
+  LayoutMode: Top;
+  Padding: (Full: 20);
+
+  Label #diplomacyTitleLabel {
+    Text: "Diplomacy";
+    Anchor: (Height: 45);
+    Style: (
+      FontSize: 26,
+      TextColor: #ffffff,
+      HorizontalAlignment: Center,
+      RenderBold: true
+    );
+  }
+
+  Group {
+    Anchor: (Height: 1);
+    Background: #2b3542;
+  }
+
+  Group { Anchor: (Height: 12); }
+
+  Group {
+    LayoutMode: Top;
+    FlexWeight: 1;
+
+    Label #enemiesHeaderLabel {
+      Text: "Enemies:";
+      Style: (
+        FontSize: 16,
+        TextColor: #96a9be,
+        RenderBold: true
+      );
+      Anchor: (Height: 28);
+    }
+
+    Label #noEnemiesLabel {
+      Text: "No enemies";
+      Style: (FontSize: 14, TextColor: #96a9be);
+      Visible: false;
+      Anchor: (Height: 24);
+    }
+
+    Group #EnemyList {
+      LayoutMode: TopScrolling;
+      ScrollbarStyle: $C.@DefaultScrollbarStyle;
+      Anchor: (Height: 120);
+    }
+
+    Group { Anchor: (Height: 12); }
+
+    Group #alliesHeaderRow {
+      LayoutMode: Right;
+      Anchor: (Height: 32);
+
+      Label #alliesHeaderLabel {
+        Text: "Allies:";
+        Style: (
+          FontSize: 16,
+          TextColor: #96a9be,
+          RenderBold: true
+        );
+        Anchor: (Height: 28);
+        FlexWeight: 1;
+      }
+
+      $C.@TextButton #manageRequestsButton {
+        Text: "Manage Requests";
+        Anchor: (Width: 230, Height: 28);
+      }
+    }
+
+    Label #noAlliesLabel {
+      Text: "No allies";
+      Style: (FontSize: 14, TextColor: #96a9be);
+      Visible: false;
+      Anchor: (Height: 24);
+    }
+
+    Group #AllyList {
+      LayoutMode: TopScrolling;
+      ScrollbarStyle: $C.@DefaultScrollbarStyle;
+      Anchor: (Height: 120);
+    }
+
+    Group { Anchor: (Height: 12); }
+
+    Label #otherFactionsHeaderLabel {
+      Text: "Other factions:";
+      Style: (
+        FontSize: 16,
+        TextColor: #96a9be,
+        RenderBold: true
+      );
+      Anchor: (Height: 28);
+    }
+
+    Group #otherFactionsFilterRow {
+      LayoutMode: Right;
+      Anchor: (Height: 36);
+
+      $C.@TextField #SearchInput {
+        FlexWeight: 1;
+        Anchor: (Height: 36);
+        PlaceholderText: "Filter by name...";
+      }
+    }
+
+    Group { Anchor: (Height: 6); }
+
+    Label #noOtherFactionsLabel {
+      Text: "No other factions";
+      Style: (FontSize: 14, TextColor: #96a9be);
+      Visible: false;
+      Anchor: (Height: 24);
+    }
+
+    Group #OtherFactionsList {
+      LayoutMode: TopScrolling;
+      ScrollbarStyle: $C.@DefaultScrollbarStyle;
+      FlexWeight: 1;
+    }
+
+    Group { FlexWeight: 1; }
+  }
+
+  Group {
+    Anchor: (Height: 1);
+    Background: #2b3542(0.5);
+  }
+
+  Group { Anchor: (Height: 16); }
+
+  Group #ActionButtons {
+    LayoutMode: Right;
+    Anchor: (Height: 44);
+
+    $C.@TextButton #backButton {
+      Text: "BACK";
+      Anchor: (Width: 120, Height: 40);
+    }
+
+    Group { FlexWeight: 1; }
+
+    $C.@CancelTextButton #closeButton {
+      Text: "CLOSE";
+      Anchor: (Width: 110, Height: 40);
+    }
+  }
+}

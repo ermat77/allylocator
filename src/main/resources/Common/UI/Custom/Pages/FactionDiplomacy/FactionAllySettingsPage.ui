@@ -1,0 +1,95 @@
+$C = "../../Common.ui";
+
+Group {
+  Anchor: (Width: 520, Height: 520);
+  Background: #141c26(0.98);
+  LayoutMode: Top;
+  Padding: (Full: 20);
+
+  Label #TitleLabel {
+    Text: "Ally settings";
+    Anchor: (Height: 45);
+    Style: (
+      FontSize: 26,
+      TextColor: #ffffff,
+      HorizontalAlignment: Center,
+      RenderBold: true
+    );
+  }
+
+  Group {
+    Anchor: (Height: 1);
+    Background: #2b3542;
+  }
+
+  Group { Anchor: (Height: 16); }
+
+  Group #CheckboxList {
+    LayoutMode: TopScrolling;
+    ScrollbarStyle: $C.@DefaultScrollbarStyle;
+    FlexWeight: 1;
+
+    $C.@CheckBoxWithLabel #ShareMarkers {
+      @Text = "Share faction members' PlayerMarkers on the map";
+      Padding: (Bottom: 8);
+    }
+
+    $C.@CheckBoxWithLabel #AllowInteractions {
+      @Text = "Allow interactions from ally in our claimed chunks";
+      Padding: (Bottom: 8);
+    }
+
+    $C.@CheckBoxWithLabel #OpenChest {
+      @Text = "Allow ally to open chests";
+      Padding: (Bottom: 8);
+    }
+
+    $C.@CheckBoxWithLabel #OpenDoor {
+      @Text = "Allow ally to open doors";
+      Padding: (Bottom: 8);
+    }
+
+    $C.@CheckBoxWithLabel #OpenBench {
+      @Text = "Allow ally to use benches";
+      Padding: (Bottom: 8);
+    }
+
+    $C.@CheckBoxWithLabel #UseChair {
+      @Text = "Allow ally to use chairs";
+      Padding: (Bottom: 8);
+    }
+
+    $C.@CheckBoxWithLabel #UsePortal {
+      @Text = "Allow ally to use portals";
+      Padding: (Bottom: 8);
+    }
+
+    $C.@CheckBoxWithLabel #PlaceBlock {
+      @Text = "Allow ally to place blocks";
+      Padding: (Bottom: 8);
+    }
+
+    $C.@CheckBoxWithLabel #BreakBlock {
+      @Text = "Allow ally to break blocks";
+      Padding: (Bottom: 8);
+    }
+  }
+
+  Group {
+    Anchor: (Height: 1);
+    Background: #2b3542(0.5);
+  }
+
+  Group { Anchor: (Height: 16); }
+
+  Group #ActionButtons {
+    LayoutMode: Right;
+    Anchor: (Height: 44);
+
+    $C.@TextButton #backButton {
+      Text: "BACK";
+      Anchor: (Width: 120, Height: 40);
+      Background: (Color: #4870ddff);
+    }
+  }
+}

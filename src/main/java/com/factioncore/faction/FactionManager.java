@@ -134,6 +134,15 @@ public class FactionManager {
     }
     
     /**
+     * Returns the DatabaseManager used for persistence. Used by PrismManager for prism table operations.
+     *
+     * @return The DatabaseManager instance (never null)
+     */
+    public DatabaseManager getDatabaseManager() {
+        return databaseManager;
+    }
+    
+    /**
      * Initializes data asynchronously from database.
      * Loads all data into in-memory maps.
      * 

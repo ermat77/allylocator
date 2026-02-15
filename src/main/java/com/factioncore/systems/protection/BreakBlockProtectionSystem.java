@@ -1,6 +1,7 @@
 package com.factioncore.systems.protection;
 
 import com.factioncore.Main;
+import com.factioncore.systems.interaction.BlockUseOpenUISystem;
 import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.PermissionUtil;
 import com.hypixel.hytale.component.ArchetypeChunk;
@@ -64,30 +65,39 @@ public class BreakBlockProtectionSystem extends EntityEventSystem<EntityStore, B
         String blockName = blockId.toLowerCase(Locale.ROOT);
         ConfigUtil.verboseDebug(PREFIX + "block type id=" + blockId);
 
-        // Blocks in ignore list (e.g. grass) skip protection (SimpleClaims-style)
-        boolean ignored = ProtectionService.isBlockIgnored(blockName);
-        ConfigUtil.verboseDebug(PREFIX + "block in ignore list=" + ignored + " (blockName=" + blockName + ")");
-        if (ignored) {
-            ConfigUtil.verboseDebug(PREFIX + "allowing (block ignored), not cancelling");
-            return;
-    }
-        
         Ref<EntityStore> ref = archetypeChunk.getReferenceTo(index);
         if (ref == null || !ref.isValid()) {
             ConfigUtil.verboseDebug(PREFIX + "ref null or invalid, skipping");
             return;
         }
-        
-        // Get PlayerRef to access player UUID
+
         PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
         if (playerRef == null) {
             ConfigUtil.verboseDebug(PREFIX + "no PlayerRef on entity, skipping");
-            return; // Not a player
+            return;
         }
-        
+
         UUID playerUuid = playerRef.getUuid();
         if (playerUuid == null) {
             ConfigUtil.verboseDebug(PREFIX + "PlayerRef uuid null, skipping");
+            return;
+        }
+
+        // Prism Block is not breakable unless player has factioncore.breakprismblock
+        if (blockId != null && BlockUseOpenUISystem.BLOCK_TYPE_ID_PRISM_BLOCK.equalsIgnoreCase(blockId)) {
+            if (!PermissionUtil.canBreakPrismBlock(playerUuid)) {
+                ConfigUtil.debug(PREFIX + "BLOCKING break of Prism_Block for player " + playerUuid + " (no break permission)");
+                event.setCancelled(true);
+                return;
+            }
+            // Has permission; allow break (claim check below may still apply)
+        }
+
+        // Blocks in ignore list (e.g. grass) skip protection (SimpleClaims-style)
+        boolean ignored = ProtectionService.isBlockIgnored(blockName);
+        ConfigUtil.verboseDebug(PREFIX + "block in ignore list=" + ignored + " (blockName=" + blockName + ")");
+        if (ignored) {
+            ConfigUtil.verboseDebug(PREFIX + "allowing (block ignored), not cancelling");
             return;
         }
         

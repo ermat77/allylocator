@@ -1,0 +1,19 @@
+$C = "../../Common.ui";
+
+Group {
+  LayoutMode: Right;
+  Anchor: (Height: 30);
+  
+  Label #MemberLabel {
+    Text: "";
+    FlexWeight: 1;
+    Anchor: (Vertical: 0);
+    Style: (VerticalAlignment: Center);
+  }
+
+  $C.@TextButton #PermissionsButton {
+    Text: "Permissions";
+    Visible: false;
+    Anchor: (Vertical: 0);
+  }
+}

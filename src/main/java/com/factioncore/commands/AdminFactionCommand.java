@@ -2,7 +2,7 @@ package com.factioncore.commands;
 
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
-import com.factioncore.ui.FactionShowPage;
+import com.factioncore.ui.factionbase.FactionShowPage;
 import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;

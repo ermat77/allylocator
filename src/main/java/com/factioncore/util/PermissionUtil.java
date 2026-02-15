@@ -48,6 +48,11 @@ public class PermissionUtil {
     public static final String PERM_PRISM = "factioncore.player.prism";
 
     /**
+     * Permission constant for breaking Prism Blocks (otherwise not breakable).
+     */
+    public static final String PERM_BREAK_PRISM_BLOCK = "factioncore.breakprismblock";
+
+    /**
      * Permission constant for claiming chunks.
      */
     public static final String PERM_CLAIM_CHUNK = "factioncore.player.claim";
@@ -463,6 +468,13 @@ public class PermissionUtil {
      */
     public static boolean canUsePrism(UUID playerUuid) {
         return hasPermission(playerUuid, PERM_PRISM);
+    }
+
+    /**
+     * Returns true if the player can break Prism Blocks (factioncore.breakprismblock).
+     */
+    public static boolean canBreakPrismBlock(UUID playerUuid) {
+        return hasPermission(playerUuid, PERM_BREAK_PRISM_BLOCK);
     }
 
     /**

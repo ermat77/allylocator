@@ -1,2 +1,4 @@
 items.Modded_Prism_Block.name = TestBlock
 server.Interactive_Block.name = Interactive Block
+server.Prism_Block.name = Prism Block
+server.items.Prism_Block.name = Prism Block

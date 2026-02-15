@@ -3,6 +3,7 @@ package com.factioncore;
 import com.factioncore.commands.FactionCommand;
 import com.factioncore.config.ClaimConfig;
 import com.factioncore.config.GeneralConfig;
+import com.factioncore.config.PrismMultiplierConfig;
 import com.factioncore.faction.FactionComponent;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.faction.FactionSystem;
@@ -16,6 +17,9 @@ import com.factioncore.systems.protection.GlobalDamageBlockProtectionSystem;
 import com.factioncore.systems.protection.PlaceBlockProtectionSystem;
 import com.factioncore.systems.protection.UseBlockProtectionSystem;
 import com.factioncore.systems.interaction.BlockUseOpenUISystem;
+import com.factioncore.systems.interaction.PrismBlockPlacerClearSystem;
+import com.factioncore.systems.interaction.PrismBlockPlacerTrackingSystem;
+import com.factioncore.prism.PrismManager;
 import com.factioncore.systems.tick.ChunkBordersTickingSystem;
 import com.factioncore.systems.tick.TitleTickingSystem;
 import com.factioncore.systems.tick.WorldMapUpdateTickingSystem;
@@ -58,6 +62,7 @@ public class Main extends JavaPlugin {
     private ComponentType<EntityStore, FactionComponent> factionComponentType;
     private Config<ClaimConfig> claimConfig;
     private Config<GeneralConfig> generalConfig;
+    private Config<PrismMultiplierConfig> prismMultiplierConfig;
     private final FactionWorldMapProvider worldMapProvider = new FactionWorldMapProvider();
     /** Plugin data directory: same folder as the plugin JAR, then FactionCore (e.g. mods/FactionCore). */
     private final Path pluginDataPath;
@@ -84,6 +89,7 @@ public class Main extends JavaPlugin {
         }
         this.claimConfig = new Config<>(pluginDataPath, "claim_config", ClaimConfig.CODEC);
         this.generalConfig = new Config<>(pluginDataPath, "config", GeneralConfig.CODEC);
+        this.prismMultiplierConfig = new Config<>(pluginDataPath, "prism_multiplier_config", PrismMultiplierConfig.CODEC);
     }
 
     /**
@@ -157,6 +163,15 @@ public class Main extends JavaPlugin {
      */
     public Config<GeneralConfig> getGeneralConfig() {
         return generalConfig;
+    }
+
+    /**
+     * Gets the PrismMultiplierConfig (spawn chunk + bands for effect multiplier).
+     *
+     * @return The Config instance for PrismMultiplierConfig
+     */
+    public Config<PrismMultiplierConfig> getPrismMultiplierConfig() {
+        return prismMultiplierConfig;
     }
 
     /**
@@ -261,12 +276,23 @@ public class Main extends JavaPlugin {
             FactionManager.getInstance();
             getLogger().at(Level.INFO).log("FactionManager initialized");
             ConfigUtil.debug("FactionManager initialized");
+
+            PrismManager.getInstance().initializeAsync();
+            getLogger().at(Level.INFO).log("PrismManager init scheduled (prisms load from DB)");
+            ConfigUtil.debug("PrismManager initializeAsync() called");
+
+            com.factioncore.points.FactionPointsManager.getInstance().initializeAsync();
+            getLogger().at(Level.INFO).log("FactionPointsManager init scheduled (faction points load from DB)");
+            ConfigUtil.debug("FactionPointsManager initializeAsync() called");
             
             // Load ClaimConfig after FactionManager (creates claim_config.json with defaults if missing)
             try {
                 this.claimConfig.load().join();
                 this.claimConfig.save().join();
                 getLogger().at(Level.INFO).log("ClaimConfig loaded from " + getPluginDataPath().resolve("claim_config.json"));
+                this.prismMultiplierConfig.load().join();
+                this.prismMultiplierConfig.save().join();
+                getLogger().at(Level.INFO).log("PrismMultiplierConfig loaded from " + getPluginDataPath().resolve("prism_multiplier_config.json"));
             } catch (Exception e) {
                 getLogger().at(Level.WARNING).withCause(e).log("Failed to load/save ClaimConfig: " + e.getMessage());
             }
@@ -311,6 +337,10 @@ public class Main extends JavaPlugin {
             getEntityStoreRegistry().registerSystem((ISystem) new BlockUseOpenUISystem());
             getLogger().at(Level.INFO).log("BlockUseOpenUISystem registered (F key on block opens UI)");
             ConfigUtil.debug("BlockUseOpenUISystem registered");
+
+            getEntityStoreRegistry().registerSystem((ISystem) new PrismBlockPlacerTrackingSystem());
+            getEntityStoreRegistry().registerSystem((ISystem) new PrismBlockPlacerClearSystem());
+            ConfigUtil.debug("PrismBlock placer tracking/clear systems registered");
 
             // Global (world-level) break/damage protection: explosions and non-player breaks (SimpleClaims-style)
             getEntityStoreRegistry().registerSystem((ISystem) new GlobalDamageBlockProtectionSystem());

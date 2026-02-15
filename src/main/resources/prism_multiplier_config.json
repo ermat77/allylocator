@@ -1,0 +1,6 @@
+{
+  "SpawnChunkX": 0,
+  "SpawnChunkZ": 0,
+  "MaxChunkDistances": "5,10,15,20,25",
+  "Multipliers": "50,10,5,2,1"
+}

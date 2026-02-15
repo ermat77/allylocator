@@ -1,0 +1,51 @@
+$C = "../../Common.ui";
+
+Group {
+  LayoutMode: Right;
+  Anchor: (Height: 52);
+  Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
+  Background: #1e2832(0.6);
+
+  Group {
+    LayoutMode: Top;
+    FlexWeight: 1;
+    Anchor: (Vertical: 0);
+    Style: (VerticalAlignment: Center);
+
+    Label #PointsLabel {
+      Text: "";
+      Style: (
+        FontSize: 16,
+        TextColor: #ffffff
+      );
+      Anchor: (Height: 22);
+    }
+    Label #CoordsLabel {
+      Text: "";
+      Style: (
+        FontSize: 14,
+        TextColor: #96a9be
+      );
+      Anchor: (Height: 20);
+    }
+  }
+
+  Group {
+    LayoutMode: Right;
+    Anchor: (Vertical: 0);
+    Style: (VerticalAlignment: Center);
+
+    Label #ShowOnMapLabel {
+      Text: "Show on map";
+      Style: (
+        FontSize: 14,
+        TextColor: #96a9be
+      );
+      Anchor: (Vertical: 0);
+    }
+    Group { Anchor: (Width: 8); }
+    CheckBox #ShowOnMapCheckbox {
+      Anchor: (Width: 22, Height: 22);
+    }
+  }
+}
