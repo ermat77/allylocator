@@ -376,6 +376,13 @@ public final class PrismService {
     }
 
     /**
+     * Public entry point for setting a block to air (e.g. from PrismAttackService when attackers win).
+     */
+    public static void setBlockToAirStatic(@Nonnull World world, int x, int y, int z) {
+        setBlockToAir(world, x, y, z);
+    }
+
+    /**
      * Sets the block at (x,y,z) to air/empty. Uses lowercase "air" to avoid "Unknown key! Air"
      * (engine rejects "hytale:air" / "Air"). If that fails, tries BlockType.EMPTY.getId().
      */

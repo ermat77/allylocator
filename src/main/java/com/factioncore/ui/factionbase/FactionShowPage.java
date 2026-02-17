@@ -520,15 +520,34 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         }
         
         if ("prism".equals(data.action)) {
+            ConfigUtil.debug("[FactionShowPage.prism] ENTER playerUuid=" + playerUuid + " adminViewFactionId=" + adminViewFactionId + " currentFaction=" + (currentFaction != null ? currentFaction.getName() : "null"));
             if (currentFaction == null) {
+                ConfigUtil.debug("[FactionShowPage.prism] currentFaction is null, sending must_be_in_faction message");
                 player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.must_be_in_faction_diplomacy"))
                     .color(Color.RED).bold(true));
                 return;
             }
+            UUID factionId = currentFaction.getId();
+            ConfigUtil.debug("[FactionShowPage.prism] currentFaction.getId()=" + factionId);
+            if (factionId == null) {
+                ConfigUtil.debug("[FactionShowPage.prism] currentFaction.getId() is null, sending error");
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Unable to open prisms.")
+                    .color(Color.RED));
+                return;
+            }
+            Object pageManager = player.getPageManager();
+            ConfigUtil.debug("[FactionShowPage.prism] player.getPageManager()=" + (pageManager != null ? "ok" : "NULL"));
+            if (pageManager == null) {
+                ConfigUtil.debug("[FactionShowPage.prism] PageManager null, returning without opening");
+                return;
+            }
+            ConfigUtil.debug("[FactionShowPage.prism] Creating FactionPrismsPage");
             FactionPrismsPage prismsPage = adminViewFactionId != null
                 ? new FactionPrismsPage(playerRef, adminViewFactionId)
                 : new FactionPrismsPage(playerRef);
+            ConfigUtil.debug("[FactionShowPage.prism] Calling openCustomPage(ref, store, prismsPage)");
             player.getPageManager().openCustomPage(ref, store, prismsPage);
+            ConfigUtil.debug("[FactionShowPage.prism] EXIT openCustomPage returned");
             return;
         }
         

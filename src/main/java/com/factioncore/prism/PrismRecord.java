@@ -25,11 +25,20 @@ public final class PrismRecord {
     private final UUID playerUuid;
     /** Epoch millis when the prism was placed. */
     private final long createdAtMs;
+    /** Status: "harvesting" (default) or "attacked". */
+    private final String status;
 
     public PrismRecord(@Nonnull String worldName, int x, int y, int z,
                        @Nonnull UUID id,
                        @Nonnull UUID factionId, @Nonnull UUID playerUuid,
                        long createdAtMs) {
+        this(worldName, x, y, z, id, factionId, playerUuid, createdAtMs, "harvesting");
+    }
+
+    public PrismRecord(@Nonnull String worldName, int x, int y, int z,
+                       @Nonnull UUID id,
+                       @Nonnull UUID factionId, @Nonnull UUID playerUuid,
+                       long createdAtMs, @Nonnull String status) {
         this.worldName = worldName;
         this.x = x;
         this.y = y;
@@ -38,6 +47,7 @@ public final class PrismRecord {
         this.factionId = factionId;
         this.playerUuid = playerUuid;
         this.createdAtMs = createdAtMs;
+        this.status = status != null ? status : "harvesting";
     }
 
     @Nonnull
@@ -58,6 +68,10 @@ public final class PrismRecord {
 
     /** Creation time in epoch milliseconds. */
     public long getCreatedAtMs() { return createdAtMs; }
+
+    /** Status: "harvesting" (default) or "attacked". */
+    @Nonnull
+    public String getStatus() { return status; }
 
     /**
      * Score in minutes (1 point per minute since creation).

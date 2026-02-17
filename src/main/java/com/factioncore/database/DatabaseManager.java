@@ -6,6 +6,8 @@ import com.factioncore.diplomacy.AllySettings;
 import com.factioncore.diplomacy.PendingAllyRequest;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.invite.PendingInvite;
+import com.factioncore.prism.PrismAttackParticipantRecord;
+import com.factioncore.prism.PrismAttackRecord;
 import com.factioncore.prism.PrismRecord;
 import com.hypixel.hytale.logger.HytaleLogger;
 
@@ -235,18 +237,92 @@ public class DatabaseManager {
             statement.execute("CREATE INDEX IF NOT EXISTS idx_prisms_world ON prisms(world_name)");
 
             migratePrismColumns(statement);
+            createPrismAttackTables(statement);
             migrateAllySettingsColumns(statement);
             migrateFactionHomeColumns(statement);
         }
     }
 
     /**
-     * Adds uuid and created_at to prisms table if missing (migration for existing DBs).
+     * Adds uuid, created_at, and status to prisms table if missing (migration for existing DBs).
      */
     private void migratePrismColumns(Statement statement) throws SQLException {
-        for (String colDef : new String[] { "uuid TEXT", "created_at INTEGER" }) {
+        for (String colDef : new String[] { "uuid TEXT", "created_at INTEGER", "status TEXT DEFAULT 'harvesting'" }) {
             try {
                 statement.execute("ALTER TABLE prisms ADD COLUMN " + colDef);
+            } catch (SQLException e) {
+                if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("duplicate column")) {
+                    throw e;
+                }
+            }
+        }
+    }
+
+    /**
+     * Creates prism_attacks and prism_attack_participants tables if they do not exist.
+     */
+    private void createPrismAttackTables(Statement statement) throws SQLException {
+        statement.execute("CREATE TABLE IF NOT EXISTS prism_attacks (" +
+                "attack_id TEXT PRIMARY KEY," +
+                "prism_id TEXT NOT NULL," +
+                "attack_world_name TEXT NOT NULL," +
+                "defender_faction_id TEXT NOT NULL," +
+                "attacker_faction_id TEXT NOT NULL," +
+                "status TEXT NOT NULL," +
+                "started_at INTEGER NOT NULL," +
+                "ends_at INTEGER NOT NULL," +
+                "destruction_at INTEGER NOT NULL," +
+                "prefab_id TEXT," +
+                "attackers_block_id TEXT," +
+                "defenders_block_id TEXT," +
+                "defender_positions_json TEXT," +
+                "attacker_positions_json TEXT" +
+                ")");
+        statement.execute("CREATE TABLE IF NOT EXISTS prism_attack_participants (" +
+                "attack_id TEXT NOT NULL," +
+                "player_uuid TEXT NOT NULL," +
+                "role TEXT NOT NULL," +
+                "joined_at INTEGER NOT NULL," +
+                "spawn_x INTEGER NOT NULL," +
+                "spawn_y INTEGER NOT NULL," +
+                "spawn_z INTEGER NOT NULL," +
+                "return_world_name TEXT," +
+                "return_x REAL," +
+                "return_y REAL," +
+                "return_z REAL," +
+                "PRIMARY KEY (attack_id, player_uuid)," +
+                "FOREIGN KEY (attack_id) REFERENCES prism_attacks(attack_id) ON DELETE CASCADE" +
+                ")");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_prism_attacks_prism_id ON prism_attacks(prism_id)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_prism_attacks_status ON prism_attacks(status)");
+        statement.execute("CREATE INDEX IF NOT EXISTS idx_prism_attack_participants_attack_id ON prism_attack_participants(attack_id)");
+        migratePrismAttacksDestructionAt(statement);
+        migratePrismAttackParticipantsReturn(statement);
+    }
+
+    /**
+     * Adds destruction_at to prism_attacks if missing (migration for existing DBs).
+     * For existing rows, sets destruction_at = ends_at so recovery still works.
+     */
+    private void migratePrismAttacksDestructionAt(Statement statement) throws SQLException {
+        try {
+            statement.execute("ALTER TABLE prism_attacks ADD COLUMN destruction_at INTEGER");
+            statement.execute("UPDATE prism_attacks SET destruction_at = ends_at WHERE destruction_at IS NULL");
+        } catch (SQLException e) {
+            if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("duplicate column")) {
+                throw e;
+            }
+        }
+    }
+
+    /**
+     * Adds return position columns to prism_attack_participants if missing (migration for existing DBs).
+     */
+    private void migratePrismAttackParticipantsReturn(Statement statement) throws SQLException {
+        String[] columns = { "return_world_name TEXT", "return_x REAL", "return_y REAL", "return_z REAL" };
+        for (String colDef : columns) {
+            try {
+                statement.execute("ALTER TABLE prism_attack_participants ADD COLUMN " + colDef);
             } catch (SQLException e) {
                 if (e.getMessage() == null || !e.getMessage().toLowerCase().contains("duplicate column")) {
                     throw e;
@@ -505,7 +581,7 @@ public class DatabaseManager {
             long nowMs = System.currentTimeMillis();
             try (Statement statement = connection.createStatement();
                  ResultSet rs = statement.executeQuery(
-                         "SELECT world_name, x, y, z, uuid, faction_id, player_uuid, created_at, time_alive FROM prisms")) {
+                         "SELECT world_name, x, y, z, uuid, faction_id, player_uuid, created_at, time_alive, status FROM prisms")) {
                 while (rs.next()) {
                     String uuidStr = rs.getString("uuid");
                     UUID id = uuidStr != null && !uuidStr.isEmpty()
@@ -519,6 +595,8 @@ public class DatabaseManager {
                     } else {
                         createdMs = createdAt;
                     }
+                    String status = rs.getString("status");
+                    if (status == null || status.isEmpty()) status = "harvesting";
                     list.add(new PrismRecord(
                             rs.getString("world_name"),
                             rs.getInt("x"),
@@ -527,7 +605,8 @@ public class DatabaseManager {
                             id,
                             UUID.fromString(rs.getString("faction_id")),
                             UUID.fromString(rs.getString("player_uuid")),
-                            createdMs
+                            createdMs,
+                            status
                     ));
                 }
             } catch (SQLException e) {
@@ -844,12 +923,22 @@ public class DatabaseManager {
     
     /**
      * Queues a prism insert or replace. Score is computed from created_at on interaction (1 point per minute).
+     * Uses default status "harvesting"; for "attacked" use {@link #insertOrReplacePrism(String, int, int, int, UUID, UUID, UUID, long, String)}.
      */
     public void insertOrReplacePrism(String worldName, int x, int y, int z,
                                      UUID prismId, UUID factionId, UUID playerUuid, long createdAtMs) {
+        insertOrReplacePrism(worldName, x, y, z, prismId, factionId, playerUuid, createdAtMs, "harvesting");
+    }
+
+    /**
+     * Queues a prism insert or replace with explicit status.
+     */
+    public void insertOrReplacePrism(String worldName, int x, int y, int z,
+                                     UUID prismId, UUID factionId, UUID playerUuid, long createdAtMs, String status) {
+        String s = status != null && !status.isEmpty() ? status : "harvesting";
         writeQueue.offer(new WriteOperation("insertOrReplacePrism", conn -> {
             try (PreparedStatement ps = conn.prepareStatement(
-                    "REPLACE INTO prisms (world_name, x, y, z, uuid, faction_id, player_uuid, created_at, time_alive) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0)")) {
+                    "REPLACE INTO prisms (world_name, x, y, z, uuid, faction_id, player_uuid, created_at, time_alive, status) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?)")) {
                 ps.setString(1, worldName);
                 ps.setInt(2, x);
                 ps.setInt(3, y);
@@ -858,6 +947,43 @@ public class DatabaseManager {
                 ps.setString(6, factionId.toString());
                 ps.setString(7, playerUuid.toString());
                 ps.setLong(8, createdAtMs);
+                ps.setString(9, s);
+                ps.executeUpdate();
+            }
+        }));
+    }
+
+    /**
+     * Queues a prism status update by position.
+     */
+    public void updatePrismStatus(String worldName, int x, int y, int z, String status) {
+        if (status == null || status.isEmpty()) return;
+        writeQueue.offer(new WriteOperation("updatePrismStatus", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE prisms SET status = ? WHERE world_name = ? AND x = ? AND y = ? AND z = ?")) {
+                ps.setString(1, status);
+                ps.setString(2, worldName);
+                ps.setInt(3, x);
+                ps.setInt(4, y);
+                ps.setInt(5, z);
+                ps.executeUpdate();
+            }
+        }));
+    }
+
+    /**
+     * Queues a prism faction update by position (for testing: change linked faction).
+     */
+    public void updatePrismFaction(String worldName, int x, int y, int z, java.util.UUID newFactionId) {
+        if (newFactionId == null) return;
+        writeQueue.offer(new WriteOperation("updatePrismFaction", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "UPDATE prisms SET faction_id = ? WHERE world_name = ? AND x = ? AND y = ? AND z = ?")) {
+                ps.setString(1, newFactionId.toString());
+                ps.setString(2, worldName);
+                ps.setInt(3, x);
+                ps.setInt(4, y);
+                ps.setInt(5, z);
                 ps.executeUpdate();
             }
         }));
@@ -877,6 +1003,213 @@ public class DatabaseManager {
                 ps.executeUpdate();
             }
         }));
+    }
+
+    // ---------- Prism attacks ----------
+
+    /**
+     * Queues insert of a prism attack row.
+     */
+    public void insertPrismAttack(PrismAttackRecord attack) {
+        writeQueue.offer(new WriteOperation("insertPrismAttack", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO prism_attacks (attack_id, prism_id, attack_world_name, defender_faction_id, attacker_faction_id, status, started_at, ends_at, destruction_at, prefab_id, attackers_block_id, defenders_block_id, defender_positions_json, attacker_positions_json) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, attack.getAttackId().toString());
+                ps.setString(2, attack.getPrismId().toString());
+                ps.setString(3, attack.getAttackWorldName());
+                ps.setString(4, attack.getDefenderFactionId().toString());
+                ps.setString(5, attack.getAttackerFactionId().toString());
+                ps.setString(6, attack.getStatus());
+                ps.setLong(7, attack.getStartedAtMs());
+                ps.setLong(8, attack.getEndsAtMs());
+                ps.setLong(9, attack.getDestructionAtMs());
+                ps.setString(10, attack.getPrefabId());
+                ps.setString(11, attack.getAttackersBlockId());
+                ps.setString(12, attack.getDefendersBlockId());
+                ps.setString(13, attack.getDefenderPositionsJson());
+                ps.setString(14, attack.getAttackerPositionsJson());
+                ps.executeUpdate();
+            }
+        }));
+    }
+
+    /**
+     * Queues update of prism attack status.
+     */
+    public void updatePrismAttackStatus(UUID attackId, String status) {
+        if (status == null || status.isEmpty()) return;
+        writeQueue.offer(new WriteOperation("updatePrismAttackStatus", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement("UPDATE prism_attacks SET status = ? WHERE attack_id = ?")) {
+                ps.setString(1, status);
+                ps.setString(2, attackId.toString());
+                ps.executeUpdate();
+            }
+        }));
+    }
+
+    /**
+     * Loads one prism attack by prism_id with status PENDING_START, PREPARING or IN_PROGRESS. Returns empty if not found.
+     */
+    public CompletableFuture<Optional<PrismAttackRecord>> loadPrismAttackByPrismIdAsync(UUID prismId) {
+        if (prismId == null) return CompletableFuture.completedFuture(Optional.empty());
+        return CompletableFuture.supplyAsync(() -> {
+            try (PreparedStatement ps = connection.prepareStatement(
+                    "SELECT attack_id, prism_id, attack_world_name, defender_faction_id, attacker_faction_id, status, started_at, ends_at, destruction_at, prefab_id, attackers_block_id, defenders_block_id, defender_positions_json, attacker_positions_json FROM prism_attacks WHERE prism_id = ? AND status IN ('PENDING_START', 'PREPARING', 'IN_PROGRESS') LIMIT 1")) {
+                ps.setString(1, prismId.toString());
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return Optional.of(rowToPrismAttackRecord(rs));
+                    }
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading prism attack by prism_id: " + e.getMessage());
+                throw new RuntimeException("Failed to load prism attack by prism_id", e);
+            }
+            return Optional.empty();
+        }, loadExecutor);
+    }
+
+    private static PrismAttackRecord rowToPrismAttackRecord(ResultSet rs) throws SQLException {
+        long destructionAt = rs.getLong("destruction_at");
+        if (rs.wasNull()) destructionAt = rs.getLong("ends_at");
+        return new PrismAttackRecord(
+                UUID.fromString(rs.getString("attack_id")),
+                UUID.fromString(rs.getString("prism_id")),
+                rs.getString("attack_world_name"),
+                UUID.fromString(rs.getString("defender_faction_id")),
+                UUID.fromString(rs.getString("attacker_faction_id")),
+                rs.getString("status"),
+                rs.getLong("started_at"),
+                rs.getLong("ends_at"),
+                destructionAt,
+                rs.getString("prefab_id"),
+                rs.getString("attackers_block_id"),
+                rs.getString("defenders_block_id"),
+                rs.getString("defender_positions_json"),
+                rs.getString("attacker_positions_json")
+        );
+    }
+
+    private static PrismAttackParticipantRecord rowToPrismAttackParticipantRecord(ResultSet rs) throws SQLException {
+        String returnWorld = rs.getString("return_world_name");
+        double rx = 0, ry = 0, rz = 0;
+        try {
+            rx = rs.getDouble("return_x");
+            ry = rs.getDouble("return_y");
+            rz = rs.getDouble("return_z");
+        } catch (SQLException ignored) { /* columns may not exist in old DBs */ }
+        return new PrismAttackParticipantRecord(
+                UUID.fromString(rs.getString("attack_id")),
+                UUID.fromString(rs.getString("player_uuid")),
+                rs.getString("role"),
+                rs.getLong("joined_at"),
+                rs.getInt("spawn_x"),
+                rs.getInt("spawn_y"),
+                rs.getInt("spawn_z"),
+                returnWorld,
+                rx, ry, rz
+        );
+    }
+
+    /**
+     * Loads prism attacks with status PENDING_START, PREPARING or IN_PROGRESS (for startup recovery).
+     */
+    public CompletableFuture<List<PrismAttackRecord>> loadPrismAttacksActiveAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<PrismAttackRecord> list = new ArrayList<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery(
+                         "SELECT attack_id, prism_id, attack_world_name, defender_faction_id, attacker_faction_id, status, started_at, ends_at, destruction_at, prefab_id, attackers_block_id, defenders_block_id, defender_positions_json, attacker_positions_json FROM prism_attacks WHERE status IN ('PENDING_START', 'PREPARING', 'IN_PROGRESS')")) {
+                while (rs.next()) {
+                    list.add(rowToPrismAttackRecord(rs));
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading prism attacks: " + e.getMessage());
+                throw new RuntimeException("Failed to load prism attacks", e);
+            }
+            return list;
+        }, loadExecutor);
+    }
+
+    /**
+     * Loads all prism attacks (all statuses) for admin UI.
+     */
+    public CompletableFuture<List<PrismAttackRecord>> loadAllPrismAttacksAsync() {
+        return CompletableFuture.supplyAsync(() -> {
+            List<PrismAttackRecord> list = new ArrayList<>();
+            try (Statement statement = connection.createStatement();
+                 ResultSet rs = statement.executeQuery(
+                         "SELECT attack_id, prism_id, attack_world_name, defender_faction_id, attacker_faction_id, status, started_at, ends_at, destruction_at, prefab_id, attackers_block_id, defenders_block_id, defender_positions_json, attacker_positions_json FROM prism_attacks ORDER BY started_at DESC")) {
+                while (rs.next()) {
+                    list.add(rowToPrismAttackRecord(rs));
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading all prism attacks: " + e.getMessage());
+                throw new RuntimeException("Failed to load all prism attacks", e);
+            }
+            return list;
+        }, loadExecutor);
+    }
+
+    /**
+     * Queues insert of a prism attack participant.
+     */
+    public void insertPrismAttackParticipant(PrismAttackParticipantRecord participant) {
+        writeQueue.offer(new WriteOperation("insertPrismAttackParticipant", conn -> {
+            try (PreparedStatement ps = conn.prepareStatement(
+                    "INSERT INTO prism_attack_participants (attack_id, player_uuid, role, joined_at, spawn_x, spawn_y, spawn_z, return_world_name, return_x, return_y, return_z) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")) {
+                ps.setString(1, participant.getAttackId().toString());
+                ps.setString(2, participant.getPlayerUuid().toString());
+                ps.setString(3, participant.getRole());
+                ps.setLong(4, participant.getJoinedAtMs());
+                ps.setInt(5, participant.getSpawnX());
+                ps.setInt(6, participant.getSpawnY());
+                ps.setInt(7, participant.getSpawnZ());
+                if (participant.getReturnWorldName() != null) {
+                    ps.setString(8, participant.getReturnWorldName());
+                    ps.setDouble(9, participant.getReturnX());
+                    ps.setDouble(10, participant.getReturnY());
+                    ps.setDouble(11, participant.getReturnZ());
+                } else {
+                    ps.setNull(8, java.sql.Types.VARCHAR);
+                    ps.setDouble(9, 0);
+                    ps.setDouble(10, 0);
+                    ps.setDouble(11, 0);
+                }
+                int updated = ps.executeUpdate();
+                if (updated == 0) {
+                    throw new SQLException("Insert prism_attack_participant failed");
+                }
+            }
+        }));
+    }
+
+    /**
+     * Loads all participants for the given attack IDs (for startup recovery).
+     */
+    public CompletableFuture<List<PrismAttackParticipantRecord>> loadPrismAttackParticipantsForAttacksAsync(List<UUID> attackIds) {
+        if (attackIds == null || attackIds.isEmpty()) {
+            return CompletableFuture.completedFuture(Collections.emptyList());
+        }
+        return CompletableFuture.supplyAsync(() -> {
+            List<PrismAttackParticipantRecord> list = new ArrayList<>();
+            String placeholders = String.join(",", Collections.nCopies(attackIds.size(), "?"));
+            String sql = "SELECT attack_id, player_uuid, role, joined_at, spawn_x, spawn_y, spawn_z, return_world_name, return_x, return_y, return_z FROM prism_attack_participants WHERE attack_id IN (" + placeholders + ")";
+            try (PreparedStatement ps = connection.prepareStatement(sql)) {
+                for (int i = 0; i < attackIds.size(); i++) {
+                    ps.setString(i + 1, attackIds.get(i).toString());
+                }
+                try (ResultSet rs = ps.executeQuery()) {
+                    while (rs.next()) {
+                        list.add(rowToPrismAttackParticipantRecord(rs));
+                    }
+                }
+            } catch (SQLException e) {
+                logger.at(Level.SEVERE).log("Error loading prism attack participants: " + e.getMessage());
+                throw new RuntimeException("Failed to load prism attack participants", e);
+            }
+            return list;
+        }, loadExecutor);
     }
     
     /**

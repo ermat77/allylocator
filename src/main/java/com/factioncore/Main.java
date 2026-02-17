@@ -22,10 +22,12 @@ import com.factioncore.systems.interaction.PrismBlockPlacerTrackingSystem;
 import com.factioncore.prism.PrismManager;
 import com.factioncore.systems.tick.ChunkBordersTickingSystem;
 import com.factioncore.systems.tick.TitleTickingSystem;
+import com.factioncore.prism.PrismAttackHudTickingSystem;
 import com.factioncore.systems.tick.WorldMapUpdateTickingSystem;
 import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.PlayerNameCache;
 import com.hypixel.hytale.component.ComponentType;
+import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.Constants;
 import com.hypixel.hytale.component.system.ISystem;
 import com.hypixel.hytale.server.core.command.system.AbstractCommand;
@@ -37,6 +39,7 @@ import com.hypixel.hytale.server.core.plugin.JavaPluginInit;
 import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
+import com.factioncore.config.PrismAttacksConfigHolder;
 import com.hypixel.hytale.server.core.util.Config;
 import org.checkerframework.checker.nullness.compatqual.NonNullDecl;
 import java.util.logging.Level;
@@ -63,6 +66,7 @@ public class Main extends JavaPlugin {
     private Config<ClaimConfig> claimConfig;
     private Config<GeneralConfig> generalConfig;
     private Config<PrismMultiplierConfig> prismMultiplierConfig;
+    private PrismAttacksConfigHolder prismAttacksConfig;
     private final FactionWorldMapProvider worldMapProvider = new FactionWorldMapProvider();
     /** Plugin data directory: same folder as the plugin JAR, then FactionCore (e.g. mods/FactionCore). */
     private final Path pluginDataPath;
@@ -90,6 +94,7 @@ public class Main extends JavaPlugin {
         this.claimConfig = new Config<>(pluginDataPath, "claim_config", ClaimConfig.CODEC);
         this.generalConfig = new Config<>(pluginDataPath, "config", GeneralConfig.CODEC);
         this.prismMultiplierConfig = new Config<>(pluginDataPath, "prism_multiplier_config", PrismMultiplierConfig.CODEC);
+        this.prismAttacksConfig = new PrismAttacksConfigHolder(pluginDataPath);
     }
 
     /**
@@ -172,6 +177,16 @@ public class Main extends JavaPlugin {
      */
     public Config<PrismMultiplierConfig> getPrismMultiplierConfig() {
         return prismMultiplierConfig;
+    }
+
+    /**
+     * Gets the PrismAttacksConfig holder (attack timer + prefab list for prism attacks).
+     * Use {@code getPrismAttacksConfig().get()} to obtain the config instance.
+     *
+     * @return The holder with load/save and get()
+     */
+    public PrismAttacksConfigHolder getPrismAttacksConfig() {
+        return prismAttacksConfig;
     }
 
     /**
@@ -281,6 +296,11 @@ public class Main extends JavaPlugin {
             getLogger().at(Level.INFO).log("PrismManager init scheduled (prisms load from DB)");
             ConfigUtil.debug("PrismManager initializeAsync() called");
 
+            com.factioncore.prism.PrismAttackService.getInstance().initializeAsync().join();
+            com.factioncore.prism.PrismAttackEventDispatcher.getInstance().addHandler(com.factioncore.prism.PrismAttackEventHandlerImpl.getInstance());
+            com.factioncore.prism.PrismAttackHudHelper.startHudTicker();
+            getLogger().at(Level.INFO).log("PrismAttackService and event handler registered");
+
             com.factioncore.points.FactionPointsManager.getInstance().initializeAsync();
             getLogger().at(Level.INFO).log("FactionPointsManager init scheduled (faction points load from DB)");
             ConfigUtil.debug("FactionPointsManager initializeAsync() called");
@@ -294,7 +314,14 @@ public class Main extends JavaPlugin {
                 this.prismMultiplierConfig.save().join();
                 getLogger().at(Level.INFO).log("PrismMultiplierConfig loaded from " + getPluginDataPath().resolve("prism_multiplier_config.json"));
             } catch (Exception e) {
-                getLogger().at(Level.WARNING).withCause(e).log("Failed to load/save ClaimConfig: " + e.getMessage());
+                getLogger().at(Level.WARNING).withCause(e).log("Failed to load/save ClaimConfig or PrismMultiplierConfig: " + e.getMessage());
+            }
+            try {
+                this.prismAttacksConfig.load().join();
+                this.prismAttacksConfig.save().join();
+                getLogger().at(Level.INFO).log("PrismAttacksConfig loaded from " + getPluginDataPath().resolve("prism_attacks.json"));
+            } catch (Exception e) {
+                getLogger().at(Level.WARNING).withCause(e).log("Failed to load/save PrismAttacksConfig: " + e.getMessage());
             }
             
             // Register FactionComponent
@@ -349,6 +376,7 @@ public class Main extends JavaPlugin {
             // Tick systems (SimpleClaims-style: title, chunk border particles)
             getEntityStoreRegistry().registerSystem((ISystem) new TitleTickingSystem());
             getEntityStoreRegistry().registerSystem((ISystem) new ChunkBordersTickingSystem());
+            getEntityStoreRegistry().registerSystem((ISystem) new PrismAttackHudTickingSystem());
 
             getChunkStoreRegistry().registerSystem(new WorldMapUpdateTickingSystem());
             getLogger().at(Level.INFO).log("WorldMapUpdateTickingSystem registered");
@@ -788,6 +816,31 @@ public class Main extends JavaPlugin {
         }
         return null;
     }
+
+    /** Returns the default world for rescuing players (e.g. from cancelled prism-attack worlds). Tries "default" then first world. */
+    private static World getDefaultWorldForRescue() {
+        Universe universe = Universe.get();
+        if (universe == null) return null;
+        World w = universe.getWorld("default");
+        if (w != null) return w;
+        java.util.Map<String, World> worlds = universe.getWorlds();
+        if (worlds != null && !worlds.isEmpty()) {
+            return worlds.values().iterator().next();
+        }
+        return null;
+    }
+
+    /** Returns spawn transform for the given world (for rescue teleport). Uses spawn provider or (0, 100, 0). */
+    private static com.hypixel.hytale.math.vector.Transform getDefaultSpawnTransform(World world, java.util.UUID playerUuid) {
+        if (world == null) return new com.hypixel.hytale.math.vector.Transform(0, 100, 0);
+        com.hypixel.hytale.server.core.universe.world.spawn.ISpawnProvider provider = world.getWorldConfig() != null ? world.getWorldConfig().getSpawnProvider() : null;
+        if (provider == null) return new com.hypixel.hytale.math.vector.Transform(0, 100, 0);
+        try {
+            return provider.getSpawnPoint(world, playerUuid);
+        } catch (Exception e) {
+            return new com.hypixel.hytale.math.vector.Transform(0, 100, 0);
+        }
+    }
     
     /**
      * Registers all event listeners.
@@ -796,7 +849,7 @@ public class Main extends JavaPlugin {
         ConfigUtil.debug("registerEvents() called");
         
         try {
-            // Register PlayerReadyEvent to apply marker filters immediately when player joins
+            // Register PlayerReadyEvent to apply marker filters and prism-attack HUD/rescue
             getEventRegistry().registerGlobal(PlayerReadyEvent.class, event -> {
                 try {
                     ConfigUtil.debug("PlayerReadyEvent received");
@@ -807,9 +860,41 @@ public class Main extends JavaPlugin {
                     }
                     
                     // Apply marker filter when player is ready
-                    // The ECS system will handle ongoing updates, but we apply immediately here
                     com.factioncore.systems.marker.FactionMarkerFilterService.applyFilterToPlayer(event);
                     ConfigUtil.debug("PlayerReadyEvent: applied marker filter to player");
+
+                    // Prism attack: show HUD if in PREPARING attack world, or rescue to default spawn if in cancelled attack world
+                    // Use player.getWorld() so we see the world the player actually joined (attack world), not the store's world
+                    // which may still be the previous world when PlayerReadyEvent fires right after join.
+                    com.hypixel.hytale.server.core.entity.entities.Player player = event.getPlayer();
+                    if (player == null) return;
+                    com.hypixel.hytale.component.Ref<EntityStore> ref = player.getReference();
+                    if (ref == null || !ref.isValid()) return;
+                    Store<EntityStore> store = ref.getStore();
+                    if (store == null) return;
+                    com.hypixel.hytale.server.core.universe.PlayerRef playerRef = store.getComponent(ref, com.hypixel.hytale.server.core.universe.PlayerRef.getComponentType());
+                    World currentWorld = player.getWorld();
+                    if (currentWorld == null) return;
+                    String worldName = currentWorld.getName();
+                    if (!com.factioncore.prism.PrismAttackService.isAttackWorldName(worldName)) return;
+
+                    com.factioncore.prism.PrismAttackRecord attack = com.factioncore.prism.PrismAttackService.getInstance().getActiveAttackByWorldName(worldName);
+                    getLogger().at(Level.INFO).log("[FactionCore] PlayerReadyEvent prism-attack world: worldName=%s attackFound=%s playerRef=%s",
+                            worldName, attack != null, playerRef != null);
+                    if (attack != null && playerRef != null) {
+                        // In PREPARING attack world: show countdown HUD (after ClientReady).
+                        // Run on world thread so HUD manager is in correct context (same as MultipleHUD test).
+                        getLogger().at(Level.INFO).log("[FactionCore] Scheduling prism attack HUD for player %s in world %s", playerRef.getUuid(), worldName);
+                        currentWorld.execute(() -> com.factioncore.prism.PrismAttackHudHelper.showHudForPlayerIfInActiveAttack(playerRef, player, attack));
+                    } else if (attack == null) {
+                        // In prism-attack world but no PREPARING attack (cancelled): teleport to default world spawn
+                        World defaultWorld = getDefaultWorldForRescue();
+                        if (defaultWorld != null) {
+                            java.util.UUID playerUuid = playerRef != null ? playerRef.getUuid() : null;
+                            com.hypixel.hytale.math.vector.Transform spawnTransform = getDefaultSpawnTransform(defaultWorld, playerUuid);
+                            currentWorld.execute(() -> store.addComponent(ref, com.hypixel.hytale.server.core.modules.entity.teleport.Teleport.getComponentType(), com.hypixel.hytale.server.core.modules.entity.teleport.Teleport.createForPlayer(defaultWorld, spawnTransform)));
+                        }
+                    }
                 } catch (Exception e) {
                     getLogger().at(Level.WARNING).log("Error handling PlayerReadyEvent: " + e.getMessage());
                     ConfigUtil.debug("PlayerReadyEvent handler failed: " + e.getMessage(), e);

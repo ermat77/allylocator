@@ -123,6 +123,28 @@ for (int i = 0; i < members.size(); i++) {
 - Use **nested selectors**: `#ContainerName[index] #ChildElement` for child elements
 - Index is 0-based and matches append order
 
+#### When You Need to Filter Items (e.g. Skip Nulls)
+
+If some source items must be skipped (e.g. null or invalid), **build a display list first** and iterate over it. That way the loop index `i` always matches the append order and the selector `#ContainerName[i]` stays correct. Do **not** use a separate `rowIndex` with `continue` in the loop—that can desync the index from the appended position.
+
+```java
+// Build display list: valid items only
+ArrayList<Item> displayList = new ArrayList<>();
+for (Item item : sourceList) {
+    if (item != null && item.getId() != null) {
+        displayList.add(item);
+    }
+}
+commandBuilder.clear("#MyList");
+for (int i = 0; i < displayList.size(); i++) {
+    Item item = displayList.get(i);
+    commandBuilder.append("#MyList", "Pages/MyRow.ui");
+    String selector = "#MyList[" + i + "]";
+    commandBuilder.set(selector + " #Label.Text", item.getName());
+    // ...
+}
+```
+
 ### Complete Example: Member List
 
 **Java Implementation:**
@@ -766,6 +788,7 @@ if (selectedTab == 0) {
 | Task | Pattern |
 |------|---------|
 | Dynamic list | `clear()` + `append()` + index selectors |
+| Filtered list (skip nulls) | Build display list first, then loop with index `i` (no `continue`) |
 | Reusable component | Separate `.ui` file with generic IDs |
 | Scrollable list | `LayoutMode: TopScrolling` + `ScrollbarStyle` |
 | Event binding | Index selector + unique identifier in EventData |
@@ -790,6 +813,12 @@ if (selectedTab == 0) {
 3. **Pending Invites** - Dynamic invite list
    - Uses `appendInline()` for simple cases
    - Can be refactored to use component pattern
+
+4. **FactionPrismsPage** - Prism list (points + coordinates per row, scrollable)
+   - **Component**: `Pages/FactionPrism/PrismRow.ui` — row with `#PointsLabel` and `#CoordsLabel` (labels only; no buttons or checkboxes in the row).
+   - **Container**: `#PrismList` with `LayoutMode: TopScrolling` and `ScrollbarStyle: $C.@DefaultScrollbarStyle` so all rows are shown and the list scrolls when there are many prisms.
+   - **Pattern**: Build a **display list** of valid prisms (e.g. filter nulls), then `clear("#PrismList")`, then for each index `i`: `append("#PrismList", "Pages/FactionPrism/PrismRow.ui")`, then set properties using selector `#PrismList[" + i + "]` (e.g. `#PrismList[i] #PointsLabel.Text`, `#PrismList[i] #CoordsLabel.Text`). No separate row index or `continue` in the loop—use the same loop index `i` for both append order and selectors.
+   - **Java**: `FactionPrismsPage.java` — see `build()` for the display-list construction and the append + set loop. All prisms are displayed; scrolling is provided by the container.
 
 ### Migration Guide
 

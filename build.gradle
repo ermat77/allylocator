@@ -58,7 +58,10 @@ dependencies {
     // LuckPerms API - compileOnly since it's provided at runtime by the LuckPerms plugin
     // Using a version that should be compatible with most LuckPerms installations
     compileOnly("net.luckperms:api:5.4")
-    
+
+    // MultipleHUD mod - optional; compileOnly so the mod is loaded separately at runtime
+    compileOnly(files("libs/MultipleHUD-1.0.5.jar"))
+
     // SQLite JDBC driver - bundled with plugin
     shadowBundle 'org.xerial:sqlite-jdbc:3.45.1.0'
     // Gson for I18n JSON bundle parsing

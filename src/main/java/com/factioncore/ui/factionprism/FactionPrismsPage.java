@@ -4,10 +4,12 @@ import com.factioncore.faction.FactionInfo;
 import com.factioncore.ui.factionbase.FactionShowPage;
 import com.factioncore.ui.factionprism.events.FactionPrismsPageEventData;
 import com.factioncore.faction.FactionManager;
+import com.factioncore.prism.PrismAttackEventDispatcher;
 import com.factioncore.prism.PrismManager;
-import com.factioncore.prism.PrismMarkerService;
 import com.factioncore.prism.PrismMultiplierService;
 import com.factioncore.prism.PrismRecord;
+import com.factioncore.prism.PlayerJoinPrismAttackEvent;
+import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.I18n;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -22,12 +24,14 @@ import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
 /**
  * Page listing all prisms of the player's faction.
- * Shows current points (time alive × multiplier), coordinates, and a checkbox to toggle map marker.
+ * Shows current points (time alive × multiplier) and coordinates per prism.
+ * List scrolls when there are many prisms (#PrismList has TopScrolling + DefaultScrollbarStyle).
  */
 public class FactionPrismsPage extends InteractiveCustomUIPage<FactionPrismsPageEventData> {
 
@@ -49,18 +53,26 @@ public class FactionPrismsPage extends InteractiveCustomUIPage<FactionPrismsPage
         @Nonnull UIEventBuilder eventBuilder,
         @Nonnull Store<EntityStore> store
     ) {
+        try {
+        ConfigUtil.debug("[FactionPrismsPage.build] ENTER playerUuid=" + playerRef.getUuid() + " adminViewFactionId=" + adminViewFactionId);
+
         UUID playerUuid = playerRef.getUuid();
         FactionManager factionManager = FactionManager.getInstance();
+        ConfigUtil.debug("[FactionPrismsPage.build] FactionManager instance: " + (factionManager != null ? "ok" : "NULL"));
+
         FactionInfo faction = adminViewFactionId != null
             ? factionManager.getFactionById(adminViewFactionId)
             : factionManager.getFactionFromPlayer(playerUuid);
+        ConfigUtil.debug("[FactionPrismsPage.build] faction=" + (faction != null ? faction.getName() : "null") + " faction.getId()=" + (faction != null ? faction.getId() : "n/a"));
 
+        ConfigUtil.debug("[FactionPrismsPage.build] Appending page UI: Pages/FactionPrism/FactionPrismsPage.ui");
         commandBuilder.append("Pages/FactionPrism/FactionPrismsPage.ui");
+
         commandBuilder.set("#Title #TitleText.Text", I18n.get("ui.faction_prisms.title"));
         commandBuilder.set("#backButton.Text", I18n.get("ui.faction_prisms.back"));
         commandBuilder.set("#closeButton.Text", I18n.get("ui.faction_prisms.close"));
 
-        if (faction == null) {
+        if (faction == null || faction.getId() == null) {
             commandBuilder.set("#noPrismsLabel.Text", I18n.get("ui.faction_prisms.no_prisms"));
             commandBuilder.set("#noPrismsLabel.Visible", true);
             commandBuilder.clear("#PrismList");
@@ -74,62 +86,83 @@ public class FactionPrismsPage extends InteractiveCustomUIPage<FactionPrismsPage
                 "#closeButton",
                 new EventData().append("Action", "close")
             );
-            return;
-        }
-
-        List<PrismRecord> prisms = PrismManager.getInstance().getByFactionId(faction.getId());
-        long nowMs = System.currentTimeMillis();
-        PrismMarkerService markerService = PrismMarkerService.getInstance();
-
-        if (prisms.isEmpty()) {
-            commandBuilder.set("#noPrismsLabel.Text", I18n.get("ui.faction_prisms.no_prisms"));
-            commandBuilder.set("#noPrismsLabel.Visible", true);
-            commandBuilder.clear("#PrismList");
+            ConfigUtil.debug("[FactionPrismsPage.build] EXIT (no faction path)");
         } else {
-            commandBuilder.set("#noPrismsLabel.Visible", false);
-            commandBuilder.clear("#PrismList");
-            for (int i = 0; i < prisms.size(); i++) {
-                PrismRecord prism = prisms.get(i);
-                int timeAliveMinutes = prism.getScoreMinutes(nowMs);
-                int multiplier = PrismMultiplierService.getInstance().getMultiplier(prism.getChunkX(), prism.getChunkZ());
-                int points = timeAliveMinutes * multiplier;
-                String pointsText = I18n.get("ui.faction_prisms.points", points);
-                String coordsText = I18n.get("ui.faction_prisms.coordinates", prism.getX(), prism.getY(), prism.getZ());
-                boolean marked = markerService.isMarked(playerUuid, prism.getId());
+            List<PrismRecord> prisms = PrismManager.getInstance().getByFactionId(faction.getId());
+            long nowMs = System.currentTimeMillis();
 
-                commandBuilder.append("#PrismList", "Pages/FactionPrism/PrismRow.ui");
-                String selector = "#PrismList[" + i + "]";
-                String pointsSelector = selector + " #PointsLabel";
-                String coordsSelector = selector + " #CoordsLabel";
-                String labelSelector = selector + " #ShowOnMapLabel";
-                String checkboxSelector = selector + " #ShowOnMapCheckbox";
-
-                commandBuilder.set(pointsSelector + ".Text", pointsText);
-                commandBuilder.set(coordsSelector + ".Text", coordsText);
-                commandBuilder.set(labelSelector + ".Text", I18n.get("ui.faction_prisms.show_on_map"));
-                commandBuilder.set(checkboxSelector + ".Value", marked);
-
-                eventBuilder.addEventBinding(
-                    CustomUIEventBindingType.ValueChanged,
-                    checkboxSelector,
-                    new EventData()
-                        .append("Action", "toggleMarker")
-                        .append("PrismId", prism.getId().toString()),
-                    false
-                );
+            // Build display list: valid prisms only (all prisms; list scrolls via #PrismList TopScrolling)
+            ArrayList<PrismRecord> displayList = new ArrayList<>();
+            if (prisms != null) {
+                for (PrismRecord p : prisms) {
+                    if (p != null && p.getId() != null) {
+                        displayList.add(p);
+                    }
+                }
             }
-        }
 
-        eventBuilder.addEventBinding(
-            CustomUIEventBindingType.Activating,
-            "#backButton",
-            new EventData().append("Action", "back")
-        );
-        eventBuilder.addEventBinding(
-            CustomUIEventBindingType.Activating,
-            "#closeButton",
-            new EventData().append("Action", "close")
-        );
+            commandBuilder.clear("#PrismList");
+
+            if (displayList.isEmpty()) {
+                commandBuilder.set("#noPrismsLabel.Text", I18n.get("ui.faction_prisms.no_prisms"));
+                commandBuilder.set("#noPrismsLabel.Visible", true);
+            } else {
+                commandBuilder.set("#noPrismsLabel.Visible", false);
+                // Same pattern as FactionShowPage MemberList: for each index i, append then set properties (selector #PrismList[i])
+                for (int i = 0; i < displayList.size(); i++) {
+                    PrismRecord prism = displayList.get(i);
+                    commandBuilder.append("#PrismList", "Pages/FactionPrism/PrismRow.ui");
+
+                    String selector = "#PrismList[" + i + "]";
+                    String pointsSelector = selector + " #PointsLabel";
+                    String coordsSelector = selector + " #CoordsLabel";
+                    String multiplierSelector = selector + " #MultiplierLabel";
+                    String defendButtonSelector = selector + " #DefendButton";
+
+                    int timeAliveMinutes = prism.getScoreMinutes(nowMs);
+                    int multiplier = PrismMultiplierService.getInstance().getMultiplier(prism.getChunkX(), prism.getChunkZ());
+                    int points = timeAliveMinutes * multiplier;
+                    String pointsText = I18n.get("ui.faction_prisms.points", points);
+                    String coordsText = I18n.get("ui.faction_prisms.coordinates", prism.getX(), prism.getY(), prism.getZ());
+                    String multiplierText = I18n.get("ui.faction_prisms.multiplier", multiplier);
+
+                    commandBuilder.set(pointsSelector + ".Text", pointsText);
+                    commandBuilder.set(coordsSelector + ".Text", coordsText);
+                    commandBuilder.set(multiplierSelector + ".Text", multiplierText);
+
+                    boolean isAttacked = prism.getStatus() != null && "attacked".equals(prism.getStatus());
+                    commandBuilder.set(defendButtonSelector + ".Visible", isAttacked);
+                    if (isAttacked) {
+                        eventBuilder.addEventBinding(
+                            CustomUIEventBindingType.Activating,
+                            defendButtonSelector,
+                            new EventData()
+                                .append("Action", "defend")
+                                .append("PrismId", prism.getId().toString())
+                        );
+                    }
+                }
+            }
+
+            eventBuilder.addEventBinding(
+                CustomUIEventBindingType.Activating,
+                "#backButton",
+                new EventData().append("Action", "back")
+            );
+            eventBuilder.addEventBinding(
+                CustomUIEventBindingType.Activating,
+                "#closeButton",
+                new EventData().append("Action", "close")
+            );
+            ConfigUtil.debug("[FactionPrismsPage.build] EXIT (build complete)");
+        }
+        } catch (Throwable t) {
+            ConfigUtil.debug("[FactionPrismsPage.build] EXCEPTION: " + t.getClass().getSimpleName() + " " + t.getMessage());
+            for (StackTraceElement e : t.getStackTrace()) {
+                ConfigUtil.debug("[FactionPrismsPage.build]   at " + e.toString());
+            }
+            throw t;
+        }
     }
 
     @Override
@@ -142,7 +175,6 @@ public class FactionPrismsPage extends InteractiveCustomUIPage<FactionPrismsPage
         if (player == null) {
             return;
         }
-        UUID playerUuid = playerRef.getUuid();
 
         if ("back".equals(data.action) || "close".equals(data.action)) {
             FactionShowPage showPage = adminViewFactionId != null
@@ -152,13 +184,11 @@ public class FactionPrismsPage extends InteractiveCustomUIPage<FactionPrismsPage
             return;
         }
 
-        if ("toggleMarker".equals(data.action) && data.prismId != null) {
-            PrismMarkerService.getInstance().toggleMarked(playerUuid, data.prismId);
-            // Reopen page to refresh checkbox state
-            FactionPrismsPage prismsPage = adminViewFactionId != null
-                ? new FactionPrismsPage(playerRef, adminViewFactionId)
-                : new FactionPrismsPage(playerRef);
-            player.getPageManager().openCustomPage(ref, store, prismsPage);
+        if ("defend".equals(data.action) && data.prismId != null) {
+            PrismAttackEventDispatcher.getInstance().dispatch(
+                new PlayerJoinPrismAttackEvent(playerRef, ref, store, data.prismId, "defender")
+            );
+            player.getPageManager().setPage(ref, store, com.hypixel.hytale.protocol.packets.interface_.Page.None);
             return;
         }
     }

@@ -10,7 +10,6 @@ Group {
     LayoutMode: Top;
     FlexWeight: 1;
     Anchor: (Vertical: 0);
-    Style: (VerticalAlignment: Center);
 
     Label #PointsLabel {
       Text: "";
@@ -28,24 +27,21 @@ Group {
       );
       Anchor: (Height: 20);
     }
-  }
-
-  Group {
-    LayoutMode: Right;
-    Anchor: (Vertical: 0);
-    Style: (VerticalAlignment: Center);
-
-    Label #ShowOnMapLabel {
-      Text: "Show on map";
+    Label #MultiplierLabel {
+      Text: "";
       Style: (
         FontSize: 14,
         TextColor: #96a9be
       );
-      Anchor: (Vertical: 0);
+      Anchor: (Height: 18);
     }
-    Group { Anchor: (Width: 8); }
-    CheckBox #ShowOnMapCheckbox {
-      Anchor: (Width: 22, Height: 22);
-    }
+  }
+
+  Group { Anchor: (Width: 12); }
+
+  $C.@TextButton #DefendButton {
+    Text: "Defend";
+    Anchor: (Width: 90, Height: 36);
+    Visible: false;
   }
 }

@@ -103,20 +103,80 @@ public final class PrismManager {
     /**
      * Puts or replaces a prism at the given position. Generates prism uuid and sets created_at = now.
      * Score (1 point per minute) is computed from created_at when the prism is interacted with.
+     * Status defaults to "harvesting".
      */
     public void put(@Nonnull String worldName, @Nonnull Vector3i position,
                     @Nonnull UUID factionId, @Nonnull UUID playerUuid) {
+        put(worldName, position, factionId, playerUuid, "harvesting");
+    }
+
+    /**
+     * Puts or replaces a prism at the given position with explicit status.
+     */
+    public void put(@Nonnull String worldName, @Nonnull Vector3i position,
+                    @Nonnull UUID factionId, @Nonnull UUID playerUuid, @Nonnull String status) {
         int x = position.getX();
         int y = position.getY();
         int z = position.getZ();
         UUID prismId = UUID.randomUUID();
         long createdAtMs = System.currentTimeMillis();
-        PrismRecord record = new PrismRecord(worldName, x, y, z, prismId, factionId, playerUuid, createdAtMs);
+        String s = status != null && !status.isEmpty() ? status : "harvesting";
+        PrismRecord record = new PrismRecord(worldName, x, y, z, prismId, factionId, playerUuid, createdAtMs, s);
         String posKey = key(worldName, x, y, z);
         positionToPrism.put(posKey, record);
         idToPrism.put(prismId, record);
         FactionManager.getInstance().getDatabaseManager()
-                .insertOrReplacePrism(worldName, x, y, z, prismId, factionId, playerUuid, createdAtMs);
+                .insertOrReplacePrism(worldName, x, y, z, prismId, factionId, playerUuid, createdAtMs, s);
+    }
+
+    /**
+     * Resets every prism with status "attacked" to "harvesting". Call on server start so no prism
+     * remains "attacked" after a restart.
+     */
+    public void resetAllAttackedPrismsToHarvesting() {
+        for (PrismRecord r : new ArrayList<>(idToPrism.values())) {
+            if ("attacked".equals(r.getStatus())) {
+                updateStatus(r.getId(), "harvesting");
+            }
+        }
+    }
+
+    /**
+     * Updates the status of a prism by id (e.g. to "attacked"). Updates in-memory record and DB.
+     */
+    public void updateStatus(@Nonnull UUID prismId, @Nonnull String status) {
+        if (status == null || status.isEmpty()) return;
+        PrismRecord current = idToPrism.get(prismId);
+        if (current == null) return;
+        PrismRecord updated = new PrismRecord(
+                current.getWorldName(), current.getX(), current.getY(), current.getZ(),
+                current.getId(), current.getFactionId(), current.getPlayerUuid(),
+                current.getCreatedAtMs(), status
+        );
+        String posKey = key(current.getWorldName(), current.getX(), current.getY(), current.getZ());
+        positionToPrism.put(posKey, updated);
+        idToPrism.put(prismId, updated);
+        FactionManager.getInstance().getDatabaseManager()
+                .updatePrismStatus(current.getWorldName(), current.getX(), current.getY(), current.getZ(), status);
+    }
+
+    /**
+     * Updates the faction linked to a prism by id (for testing). Updates in-memory record and DB.
+     */
+    public void updateFaction(@Nonnull UUID prismId, @Nonnull UUID newFactionId) {
+        if (newFactionId == null) return;
+        PrismRecord current = idToPrism.get(prismId);
+        if (current == null) return;
+        PrismRecord updated = new PrismRecord(
+                current.getWorldName(), current.getX(), current.getY(), current.getZ(),
+                current.getId(), newFactionId, current.getPlayerUuid(),
+                current.getCreatedAtMs(), current.getStatus()
+        );
+        String posKey = key(current.getWorldName(), current.getX(), current.getY(), current.getZ());
+        positionToPrism.put(posKey, updated);
+        idToPrism.put(prismId, updated);
+        FactionManager.getInstance().getDatabaseManager()
+                .updatePrismFaction(current.getWorldName(), current.getX(), current.getY(), current.getZ(), newFactionId);
     }
 
     /**

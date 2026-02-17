@@ -4,10 +4,13 @@ import com.factioncore.diplomacy.AllySettings;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.util.ConfigUtil;
+import com.hypixel.hytale.component.Ref;
+import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.server.core.entity.entities.Player;
 import com.hypixel.hytale.server.core.event.events.player.PlayerReadyEvent;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
 import com.hypixel.hytale.server.core.universe.world.WorldMapTracker;
+import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import java.util.UUID;
 
@@ -142,8 +145,17 @@ public class FactionMarkerFilterService {
             return;
         }
         
-        // Get PlayerRef from player (deprecated but still functional)
-        PlayerRef playerRef = player.getPlayerRef();
+        Ref<EntityStore> ref = player.getReference();
+        if (ref == null || !ref.isValid()) {
+            ConfigUtil.debug("FactionMarkerFilterService.applyFilterToPlayer(PlayerReadyEvent): ref is null or invalid, returning");
+            return;
+        }
+        Store<EntityStore> store = ref.getStore();
+        if (store == null) {
+            ConfigUtil.debug("FactionMarkerFilterService.applyFilterToPlayer(PlayerReadyEvent): store is null, returning");
+            return;
+        }
+        PlayerRef playerRef = store.getComponent(ref, PlayerRef.getComponentType());
         if (playerRef == null) {
             ConfigUtil.debug("FactionMarkerFilterService.applyFilterToPlayer(PlayerReadyEvent): playerRef is null, returning");
             return;

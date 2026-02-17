@@ -1,0 +1,39 @@
+$C = "../../Common.ui";
+
+Group {
+  LayoutMode: Right;
+  Anchor: (Height: 48);
+  Padding: (Left: 12, Right: 12, Top: 4, Bottom: 4);
+  Background: #1e2832(0.6);
+
+  Group {
+    LayoutMode: Top;
+    FlexWeight: 1;
+    Anchor: (Vertical: 0);
+
+    Label #AttackIdLabel {
+      Text: "";
+      Style: (
+        FontSize: 14,
+        TextColor: #ffffff
+      );
+      Anchor: (Height: 18);
+    }
+    Label #StatusLabel {
+      Text: "";
+      Style: (
+        FontSize: 12,
+        TextColor: #96a9be
+      );
+      Anchor: (Height: 16);
+    }
+    Label #TimersLabel {
+      Text: "";
+      Style: (
+        FontSize: 12,
+        TextColor: #96a9be
+      );
+      Anchor: (Height: 16);
+    }
+  }
+}

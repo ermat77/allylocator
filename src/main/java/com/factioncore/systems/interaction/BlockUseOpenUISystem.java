@@ -30,6 +30,7 @@ import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.util.Collections;
 import java.util.Set;
+import java.util.UUID;
 
 /**
  * When the player uses (F key) a block that is configured as "open UI",
@@ -106,8 +107,12 @@ public class BlockUseOpenUISystem extends EntityEventSystem<EntityStore, UseBloc
             int timeAlive = prism != null ? prism.getScoreMinutes(System.currentTimeMillis()) : 0;
             boolean isOwnFaction = interactorFaction != null && placerFaction != null
                     && interactorFaction.getId().equals(placerFaction.getId());
+            Set<UUID> placerAllies = placerFaction != null
+                    ? FactionManager.getInstance().getAllies(placerFaction.getId()) : Collections.emptySet();
+            boolean isAllyOfPlacer = interactorFaction != null && placerFaction != null
+                    && placerAllies.contains(interactorFaction.getId());
             boolean isOtherFaction = interactorFaction != null && placerFaction != null
-                    && !interactorFaction.getId().equals(placerFaction.getId());
+                    && !interactorFaction.getId().equals(placerFaction.getId()) && !isAllyOfPlacer;
             ConfigUtil.debug("[PrismBlockUse] blockId=" + blockId
                     + " interactor=" + playerRef.getUuid()
                     + " block=(" + targetBlock.getX() + "," + targetBlock.getY() + "," + targetBlock.getZ() + ")"
@@ -117,6 +122,7 @@ public class BlockUseOpenUISystem extends EntityEventSystem<EntityStore, UseBloc
                     + " interactorFaction=" + (interactorFaction != null ? interactorFaction.getId() : "null")
                     + " timeAliveMin=" + timeAlive
                     + " isOwnFaction=" + isOwnFaction
+                    + " isAllyOfPlacer=" + isAllyOfPlacer
                     + " isOtherFaction=" + isOtherFaction);
             if (isOwnFaction && prism != null) {
                 int chunkX = prism.getChunkX();
@@ -134,6 +140,10 @@ public class BlockUseOpenUISystem extends EntityEventSystem<EntityStore, UseBloc
                                 + " multipliers=" + multConfig.getMultipliers())
                             : "null"));
                 OwnPrismPage page = new OwnPrismPage(playerRef, timeAlive, effectMultiplier, prism.getId());
+                player.getPageManager().openCustomPage(ref, store, page);
+            } else if (isAllyOfPlacer) {
+                // Ally of prism owner: show fallback page without Attack button
+                PrismBlockPage page = new PrismBlockPage(playerRef, timeAlive, placerFaction, interactorFaction, prism != null ? prism.getId() : null);
                 player.getPageManager().openCustomPage(ref, store, page);
             } else if (isOtherFaction) {
                 OtherPrismPage page = new OtherPrismPage(playerRef, placerFaction, prism != null ? prism.getId() : null);

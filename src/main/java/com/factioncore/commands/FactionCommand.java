@@ -41,6 +41,7 @@ public class FactionCommand extends AbstractAsyncCommand {
         addSubCommand((AbstractCommand) new HomeFactionCommand());
         addSubCommand((AbstractCommand) new PrismFactionCommand());
         addSubCommand((AbstractCommand) new AdminFactionCommand());
+        addSubCommand((AbstractCommand) new PrismAdminCommand());
     }
     
     @Override
@@ -71,6 +72,7 @@ public class FactionCommand extends AbstractAsyncCommand {
         commandContext.sendMessage(Message.raw(I18n.get("chat.help.home")).color(Color.WHITE));
         commandContext.sendMessage(Message.raw(I18n.get("chat.help.prism")).color(Color.WHITE));
         commandContext.sendMessage(Message.raw(I18n.get("chat.help.admin")).color(Color.WHITE));
+        commandContext.sendMessage(Message.raw(I18n.get("chat.help.prismadmin")).color(Color.WHITE));
 
         return CompletableFuture.completedFuture(null);
     }

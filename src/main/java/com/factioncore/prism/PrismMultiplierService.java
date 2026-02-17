@@ -9,7 +9,7 @@ import javax.annotation.Nonnull;
 /**
  * Computes prism effect multiplier from chunk position using PrismMultiplierConfig.
  * Distance from spawn is Chebyshev: max(|chunkX - spawnChunkX|, |chunkZ - spawnChunkZ|).
- * Returns the multiplier of the first band where distance <= maxChunkDistance (smallest such maxChunkDistance wins).
+ * Returns the multiplier of the first band where distance &lt;= maxChunkDistance (smallest such maxChunkDistance wins).
  */
 public final class PrismMultiplierService {
 

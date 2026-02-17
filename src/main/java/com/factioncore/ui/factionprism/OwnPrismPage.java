@@ -1,5 +1,8 @@
 package com.factioncore.ui.factionprism;
 
+import com.factioncore.faction.FactionInfo;
+import com.factioncore.faction.FactionManager;
+import com.factioncore.prism.PrismManager;
 import com.factioncore.prism.PrismService;
 import com.factioncore.ui.factionprism.events.OwnPrismPageEventData;
 import com.factioncore.util.I18n;
@@ -20,6 +23,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
 import java.awt.Color;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -55,6 +59,22 @@ public class OwnPrismPage extends InteractiveCustomUIPage<OwnPrismPageEventData>
         commandBuilder.set("#EffectMultiplierText.Text", I18n.get("ui.own_prism.effect_multiplier", effectMultiplier));
         commandBuilder.set("#HarvestButton.Text", I18n.get("ui.own_prism.harvest"));
         commandBuilder.set("#CancelPrismButton.Text", I18n.get("ui.own_prism.cancel_prism"));
+        commandBuilder.set("#ChangeFactionLabel.Text", I18n.get("ui.own_prism.change_faction_testing"));
+        Map<UUID, FactionInfo> allFactions = FactionManager.getInstance().getAllFactions();
+        int i = 0;
+        for (Map.Entry<UUID, FactionInfo> e : allFactions.entrySet()) {
+            FactionInfo f = e.getValue();
+            if (f == null || f.getName() == null) continue;
+            commandBuilder.append("#FactionList", "Pages/FactionPrism/FactionSelectRow.ui");
+            String sel = "#FactionList[" + i + "]";
+            commandBuilder.set(sel + " #SelectButton.Text", f.getName());
+            eventBuilder.addEventBinding(
+                    CustomUIEventBindingType.Activating,
+                    sel + " #SelectButton",
+                    new EventData().append("Action", "changeFaction").append("FactionId", e.getKey().toString())
+            );
+            i++;
+        }
         eventBuilder.addEventBinding(
                 CustomUIEventBindingType.Activating,
                 "#HarvestButton",
@@ -91,6 +111,14 @@ public class OwnPrismPage extends InteractiveCustomUIPage<OwnPrismPageEventData>
                     player.sendMessage(Message.raw(I18n.get("chat.own_prism.cancel_failed")).color(Color.RED));
                 }
             }
+            player.getPageManager().setPage(ref, store, Page.None);
+            return;
+        }
+        if ("changeFaction".equals(data.action) && prismId != null && data.factionId != null) {
+            FactionInfo faction = FactionManager.getInstance().getFactionById(data.factionId);
+            PrismManager.getInstance().updateFaction(prismId, data.factionId);
+            String name = faction != null ? faction.getName() : data.factionId.toString();
+            player.sendMessage(Message.raw(I18n.get("chat.own_prism.faction_changed", name)).color(Color.GREEN));
             player.getPageManager().setPage(ref, store, Page.None);
         }
     }

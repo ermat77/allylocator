@@ -153,7 +153,11 @@ public class PermissionUtil {
      * Permission to open any faction's UI as superadmin (/f admin &lt;name&gt;).
      */
     public static final String PERM_ADMIN_OPEN_FACTION = "factioncore.admin.openFaction";
-    
+    /**
+     * Permission to open prism attacks admin UI (/f prismadmin).
+     */
+    public static final String PERM_ADMIN_PRISMADMIN = "factioncore.admin.prismadmin";
+
     // Cache the classloader that can load LuckPerms classes
     private static ClassLoader luckPermsClassLoader = null;
     
@@ -676,7 +680,16 @@ public class PermissionUtil {
     public static boolean canOpenFactionAdmin(UUID playerUuid) {
         return hasPermissionOrWildcard(playerUuid, PERM_ADMIN_OPEN_FACTION, "factioncore.admin.*");
     }
-    
+
+    /**
+     * Checks if a player can open the prism attacks admin UI (/f prismadmin).
+     *
+     * @return true if the player has factioncore.admin.prismadmin or factioncore.admin.* permission
+     */
+    public static boolean canOpenPrismAdmin(UUID playerUuid) {
+        return hasPermissionOrWildcard(playerUuid, PERM_ADMIN_PRISMADMIN, "factioncore.admin.*");
+    }
+
     // Faction member permission checks (checks owner, admin permissions, AND faction member permissions)
     
     /**

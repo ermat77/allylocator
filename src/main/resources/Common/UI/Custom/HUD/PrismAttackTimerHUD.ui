@@ -1,0 +1,15 @@
+$C = "../Common.ui";
+
+Group {
+  LayoutMode: Center;
+  Anchor: (Bottom: 120, Width: 400, Height: 32);
+
+  Label #TimerText {
+    Text: "";
+    Style: (
+      FontSize: 18,
+      TextColor: #ffffff
+    );
+    Anchor: (Vertical: 0);
+  }
+}

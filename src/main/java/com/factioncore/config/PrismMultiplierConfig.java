@@ -11,7 +11,7 @@ import java.util.List;
  * Configuration for prism effect multiplier by chunk distance from spawn.
  * Spawn chunk and bands (maxChunkDistance → multiplier) are stored in prism_multiplier_config.json.
  * Distance is Chebyshev: max(|chunkX - spawnChunkX|, |chunkZ - spawnChunkZ|).
- * First matching band (smallest maxChunkDistance such that distance <= maxChunkDistance) wins.
+ * First matching band (smallest maxChunkDistance such that distance &lt;= maxChunkDistance) wins.
  * Bands are stored as comma-separated strings: MaxChunkDistances and Multipliers (e.g. "5,10,15,20,25" and "50,10,5,2,1").
  */
 public class PrismMultiplierConfig {
@@ -65,7 +65,7 @@ public class PrismMultiplierConfig {
 
     /**
      * Returns the multiplier for the given chunk distance (Chebyshev from spawn).
-     * Finds the band with smallest maxChunkDistance such that distance <= maxChunkDistance.
+     * Finds the band with smallest maxChunkDistance such that distance &lt;= maxChunkDistance.
      */
     public int getMultiplierForDistance(int distance) {
         List<Integer> maxDists = getMaxChunkDistances();
