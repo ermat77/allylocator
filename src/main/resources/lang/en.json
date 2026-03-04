@@ -221,6 +221,7 @@
   "ui.faction_show.button_claim": "CLAIM",
   "ui.faction_show.button_create_faction": "CREATE FACTION",
   "ui.faction_show.button_settings": "SETTINGS",
+  "ui.faction_show.button_leaderboard": "Leaderboard",
   "ui.faction_show.button_prism": "Prism",
   "ui.faction_show.button_close": "CLOSE",
   "ui.faction_show.role_owner": "Owner: ",
@@ -235,6 +236,11 @@
   "ui.faction_prisms.back": "Back",
   "ui.faction_prisms.close": "Close",
   "ui.faction_prisms.multiplier": "Multiplier: {0}",
+
+  "ui.faction_leaderboard.title": "Leaderboard",
+  "ui.faction_leaderboard.back": "Back",
+  "ui.faction_leaderboard.close": "Close",
+  "ui.faction_leaderboard.no_factions": "No factions with points yet.",
 
   "ui.prism_attack.no_prism": "No prism selected.",
   "ui.prism_attack.attack_not_found": "Attack not found or already ended.",
@@ -316,6 +322,7 @@
   "ui.member_permissions.enemies": "Manage Enemies",
   "ui.member_permissions.save": "Save",
   "ui.member_permissions.cancel": "Cancel",
+  "ui.member_permissions.back": "BACK",
   "ui.member_permissions.open_chest": "Open Chest",
   "ui.member_permissions.open_door": "Open Door",
   "ui.member_permissions.open_bench": "Use Bench",

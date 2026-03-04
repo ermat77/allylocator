@@ -50,6 +50,8 @@ public final class PrismAttackService {
     private final Map<UUID, PrismAttackRecord> prismIdToAttack = new ConcurrentHashMap<>();
     /** attack_id -> PrismAttackRecord. */
     private final Map<UUID, PrismAttackRecord> attackIdToRecord = new ConcurrentHashMap<>();
+    /** (attackId + "|" + playerUuid) -> spawn [x,y,z] for PREPARING teleport-back. */
+    private final Map<String, int[]> participantSpawnCache = new ConcurrentHashMap<>();
 
     private static final String ATTACK_WORLD_PREFIX = "prism-attack-";
     private static final ScheduledExecutorService timerScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -185,7 +187,7 @@ public final class PrismAttackService {
                 .thenAccept(participants -> {
                     for (PrismAttackParticipantRecord p : participants) {
                         if (p.getReturnWorldName() == null || p.getReturnWorldName().isEmpty()) continue;
-                        World returnWorld = Universe.get().getWorld(p.getReturnWorldName());
+                    World returnWorld = Universe.get().getWorld(p.getReturnWorldName());
                         if (returnWorld == null) continue;
                         Transform returnTransform = new Transform(p.getReturnX(), p.getReturnY(), p.getReturnZ());
                         UUID playerUuid = p.getPlayerUuid();
@@ -238,12 +240,26 @@ public final class PrismAttackService {
 
     /**
      * Removes an attack from the cache (e.g. when resolved).
+     * Also clears participant spawn cache entries for this attack.
      */
     public void removeAttackFromCache(@Nonnull UUID attackId) {
         PrismAttackRecord removed = attackIdToRecord.remove(attackId);
         if (removed != null) {
             prismIdToAttack.remove(removed.getPrismId());
         }
+        String prefix = attackId.toString() + "|";
+        participantSpawnCache.keySet().removeIf(key -> key.startsWith(prefix));
+    }
+
+    /**
+     * Returns the cached spawn position [x,y,z] for a participant in an attack, or empty if not found.
+     * Used by PrismPreparingMovementFilter to teleport players back to spawn when movement is stripped.
+     */
+    @Nonnull
+    public Optional<int[]> getParticipantSpawn(@Nonnull UUID attackId, @Nonnull UUID playerUuid) {
+        String key = attackId.toString() + "|" + playerUuid.toString();
+        int[] pos = participantSpawnCache.get(key);
+        return pos != null ? Optional.of(pos) : Optional.empty();
     }
 
     /**
@@ -410,6 +426,8 @@ public final class PrismAttackService {
                 returnWorldName, returnX, returnY, returnZ
         );
         FactionManager.getInstance().getDatabaseManager().insertPrismAttackParticipant(participant);
+        String cacheKey = attackId.toString() + "|" + playerUuid.toString();
+        participantSpawnCache.put(cacheKey, new int[] { pos[0], pos[1], pos[2] });
         return Optional.of(pos);
     }
 
@@ -524,7 +542,16 @@ public final class PrismAttackService {
                 }
                 List<int[]> attackerPositions = new ArrayList<>();
                 List<int[]> defenderPositions = new ArrayList<>();
-                collectSpawnPositionsFromPrefab(selection, attackersBlockId, defendersBlockId, attackerPositions, defenderPositions);
+                if (!chosen.getAttackersPositions().isEmpty() && !chosen.getDefendersPositions().isEmpty()) {
+                    for (PrismAttacksConfig.PositionEntry p : chosen.getAttackersPositions()) {
+                        attackerPositions.add(new int[] { p.getX(), p.getY(), p.getZ() });
+                    }
+                    for (PrismAttacksConfig.PositionEntry p : chosen.getDefendersPositions()) {
+                        defenderPositions.add(new int[] { p.getX(), p.getY(), p.getZ() });
+                    }
+                } else {
+                    collectSpawnPositionsFromPrefab(selection, attackersBlockId, defendersBlockId, attackerPositions, defenderPositions);
+                }
                 if (attackerPositions.isEmpty()) {
                     attackerPositions = Arrays.asList(new int[] { 0, 1, 0 }, new int[] { 1, 1, 0 });
                 }

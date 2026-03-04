@@ -79,6 +79,13 @@ public class DamageBlockProtectionSystem extends EntityEventSystem<EntityStore, 
         }
 
         String dimension = world.getName();
+        if (ProtectionService.isBlockBreakDisabledInWorld(dimension)) {
+            if (!PermissionUtil.canBypassProtectionAdmin(playerUuid)) {
+                ConfigUtil.debug("DamageBlockProtectionSystem: blocking block damage in prism attack world for player " + playerUuid);
+                event.setCancelled(true);
+                return;
+            }
+        }
         int blockX = event.getTargetBlock().getX();
         int blockZ = event.getTargetBlock().getZ();
 

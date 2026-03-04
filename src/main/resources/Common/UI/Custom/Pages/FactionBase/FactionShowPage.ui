@@ -1,4 +1,4 @@
-$C = "../../Common.ui";
+$Common = "../../Common.ui";
 
 Group {
   Anchor: (Width: 700, Height: 600);
@@ -8,14 +8,20 @@ Group {
 
   Group {
     LayoutMode: Right;
-    Anchor: (Height: 28);
+    Anchor: (Height: 44);
 
-    Label #factionPointsLabel {
-      Text: "0 FP";
-      Style: (
-        FontSize: 16,
-        TextColor: #96a9be
-      );
+    $Common.@TextButton #leaderboardButton {
+      Text: "Classement";
+      Anchor: (Width: 140, Height: 40);
+      Visible: false;
+    }
+
+    Group { FlexWeight: 1; }
+
+    $Common.@TextButton #prismButton {
+      Text: "Prism";
+      Anchor: (Width: 120, Height: 40);
+      Visible: false;
     }
   }
 
@@ -66,20 +72,6 @@ Group {
 
       Group { Anchor: (Height: 10); }
 
-      // Prism button row (above members/invites, at the very right)
-      Group {
-        LayoutMode: Right;
-        Anchor: (Height: 44);
-
-        Group { FlexWeight: 1; }
-
-        $C.@TextButton #prismButton {
-          Text: "Prism";
-          Anchor: (Width: 120, Height: 40);
-          Visible: false;
-        }
-      }
-
       // Horizontal container for members and pending invites panels
       Group {
         LayoutMode: Right;
@@ -113,7 +105,7 @@ Group {
           // Member list container - dynamically populated via Java
           Group #MemberList {
             LayoutMode: TopScrolling;
-            ScrollbarStyle: $C.@DefaultScrollbarStyle;
+            ScrollbarStyle: $Common.@DefaultScrollbarStyle;
             FlexWeight: 1;
           }
         }
@@ -148,14 +140,52 @@ Group {
 
           Group #PendingInvitesList {
             LayoutMode: TopScrolling;
-            ScrollbarStyle: $C.@DefaultScrollbarStyle;
+            ScrollbarStyle: $Common.@DefaultScrollbarStyle;
             FlexWeight: 1;
           }
         }
       }
     }
 
-    // Pending invites section (shown when player has invites but no faction)
+    // Create faction section (shown when player has no faction and has permission)
+    Group #createFactionSection {
+      LayoutMode: Top;
+      Visible: false;
+
+      Label #instructionsLabel {
+        Text: "Enter a name for your new faction:";
+        Style: (
+          FontSize: 16,
+          TextColor: #96a9be
+        );
+        Anchor: (Height: 30);
+      }
+
+      Group { Anchor: (Height: 12); }
+
+      Group {
+        LayoutMode: Right;
+        Anchor: (Height: 44);
+        Padding: (Full: 8);
+
+        $Common.@TextField #FactionNameInput {
+          Anchor: (Height: 44);
+          FlexWeight: 1;
+          PlaceholderText: "Enter faction name...";
+        }
+
+        Group { Anchor: (Width: 12); }
+
+        $Common.@TextButton #createFactionButtonInSection {
+          Text: "CREATE FACTION";
+          Anchor: (Width: 200, Height: 44);
+        }
+      }
+
+      Group { FlexWeight: 1; }
+    }
+
+    // Pending invites section (shown below create form when player has no faction but has invites)
     Group #pendingInvitesPageSection {
       LayoutMode: Top;
       Visible: false;
@@ -182,44 +212,6 @@ Group {
             TextColor: #96a9be
           );
           Visible: false;
-        }
-      }
-
-      Group { FlexWeight: 1; }
-    }
-
-    // Create faction section (shown when player has no faction and no invites, and has permission)
-    Group #createFactionSection {
-      LayoutMode: Top;
-      Visible: false;
-
-      Label #instructionsLabel {
-        Text: "Enter a name for your new faction:";
-        Style: (
-          FontSize: 16,
-          TextColor: #96a9be
-        );
-        Anchor: (Height: 30);
-      }
-
-      Group { Anchor: (Height: 12); }
-
-      Group {
-        LayoutMode: Right;
-        Anchor: (Height: 44);
-        Padding: (Full: 8);
-
-        $C.@TextField #FactionNameInput {
-          Anchor: (Height: 44);
-          FlexWeight: 1;
-          PlaceholderText: "Enter faction name...";
-        }
-
-        Group { Anchor: (Width: 12); }
-
-        $C.@TextButton #createFactionButtonInSection {
-          Text: "CREATE FACTION";
-          Anchor: (Width: 200, Height: 44);
         }
       }
 
@@ -256,7 +248,7 @@ Group {
     LayoutMode: Right;
     Anchor: (Height: 44);
 
-    $C.@TextButton #diplomacyButton {
+    $Common.@TextButton #diplomacyButton {
       Text: "DIPLOMACY";
       Anchor: (Width: 160, Height: 40);
       Visible: false;
@@ -264,7 +256,7 @@ Group {
 
     Group { Anchor: (Width: 16); }
 
-    $C.@TextButton #claimButton {
+    $Common.@TextButton #claimButton {
       Text: "CLAIM";
       Anchor: (Width: 140, Height: 40);
       Visible: false;
@@ -272,7 +264,7 @@ Group {
 
     Group { Anchor: (Width: 16); }
 
-    $C.@TextButton #createFactionButton {
+    $Common.@TextButton #createFactionButton {
       Text: "CREATE FACTION";
       Anchor: (Width: 150, Height: 40);
       Visible: false;
@@ -280,7 +272,7 @@ Group {
 
     Group { FlexWeight: 1; }
 
-    $C.@TextButton #settingsButton {
+    $Common.@TextButton #settingsButton {
       Text: "SETTINGS";
       Anchor: (Width: 140, Height: 40);
       Visible: false;
@@ -288,7 +280,7 @@ Group {
 
     Group { Anchor: (Width: 16); }
 
-    $C.@CancelTextButton #closeButton {
+    $Common.@CancelTextButton #closeButton {
       Text: "CLOSE";
       Anchor: (Width: 110, Height: 40);
     }

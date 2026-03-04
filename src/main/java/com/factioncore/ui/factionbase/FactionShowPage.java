@@ -3,6 +3,7 @@ package com.factioncore.ui.factionbase;
 import com.factioncore.ui.factionbase.events.FactionShowPageEventData;
 import com.factioncore.ui.factionchunk.ChunkVisualizerPage;
 import com.factioncore.ui.factiondiplomacy.FactionDiplomacyPage;
+import com.factioncore.ui.factionbase.FactionLeaderboardPage;
 import com.factioncore.ui.factionprism.FactionPrismsPage;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
@@ -20,7 +21,6 @@ import com.hypixel.hytale.server.core.universe.world.World;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
-import com.factioncore.points.FactionPointsManager;
 import com.factioncore.invite.PendingInvite;
 import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.I18n;
@@ -80,9 +80,6 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         // Load the faction UI file first (always needed)
         commandBuilder.append("Pages/FactionBase/FactionShowPage.ui");
         
-        // Points label only shown when viewing a faction; hide by default
-        commandBuilder.set("#factionPointsLabel.Visible", false);
-        
         // Set static UI text from I18n (so title, headers, and buttons are translated)
         commandBuilder.set("#factionTitleLabel.Text", I18n.get("ui.faction_show.title"));
         commandBuilder.set("#membersHeaderLabel.Text", I18n.get("ui.faction_show.members"));
@@ -94,6 +91,8 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         commandBuilder.set("#createFactionButton.Text", I18n.get("ui.faction_show.button_create_faction"));
         commandBuilder.set("#createFactionButtonInSection.Text", I18n.get("ui.faction_show.button_create_faction"));
         commandBuilder.set("#settingsButton.Text", I18n.get("ui.faction_show.button_settings"));
+        commandBuilder.set("#leaderboardButton.Text", I18n.get("ui.faction_show.button_leaderboard"));
+        commandBuilder.set("#prismButton.Text", I18n.get("ui.faction_show.button_prism"));
         commandBuilder.set("#closeButton.Text", I18n.get("ui.faction_show.button_close"));
         commandBuilder.set("#noPermissionSection #noPermissionLabel.Text", I18n.get("ui.faction_show.no_permission_create_join"));
         
@@ -112,9 +111,10 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         FactionInfo faction = adminViewFactionId != null
             ? factionManager.getFactionById(adminViewFactionId)
             : factionManager.getFactionFromPlayer(playerUuid);
-        List<PendingInvite> pendingInvites = faction != null && adminViewFactionId == null
+        // Player's pending invites (to join other factions) only when they have no faction
+        List<PendingInvite> pendingInvites = faction == null
             ? factionManager.getPendingInvitesForPlayer(playerUuid)
-            : (faction != null ? factionManager.getPendingInvitesForFaction(faction.getId()) : List.of());
+            : List.of();
 
         // Admin mode with invalid faction
         if (adminViewFactionId != null && faction == null) {
@@ -123,16 +123,16 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
             return;
         }
 
-        // Decision tree: faction → invites → create → no permission
+        // Decision tree: faction → create (with optional invites below) → invites only → no permission
         if (faction != null) {
             // Player has a faction - show faction info
             buildFactionInfoState(commandBuilder, eventBuilder, ref, store, faction, playerUuid);
-        } else if (!pendingInvites.isEmpty()) {
-            // Player has pending invites - show invites page
-            buildPendingInvitesState(commandBuilder, eventBuilder, ref, store, pendingInvites, playerUuid);
         } else if (canCreate) {
-            // Player can create faction - show create form
-            buildCreateFactionState(commandBuilder, eventBuilder, ref, store, playerUuid);
+            // Player can create faction - show create form and, if any, pending invites below
+            buildCreateFactionState(commandBuilder, eventBuilder, ref, store, playerUuid, pendingInvites);
+        } else if (!pendingInvites.isEmpty()) {
+            // Player has pending invites but cannot create - show invites only
+            buildPendingInvitesState(commandBuilder, eventBuilder, ref, store, pendingInvites, playerUuid);
         } else {
             // Player doesn't have create permission - show no permission message
             buildNoPermissionState(commandBuilder, eventBuilder);
@@ -153,11 +153,8 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         commandBuilder.set("#createFactionSection.Visible", false);
         commandBuilder.set("#noPermissionSection.Visible", false);
         
-        // Set faction name, member count, and points (top right)
+        // Set faction name and member count
         ConfigUtil.debug("FactionShowPage: Setting faction name: " + faction.getName() + ", member count: " + faction.getMemberCount());
-        commandBuilder.set("#factionPointsLabel.Visible", true);
-        int points = FactionPointsManager.getInstance().getPoints(faction.getId());
-        commandBuilder.set("#factionPointsLabel.Text", I18n.get("ui.faction_show.points", points));
         commandBuilder.set("#factionNameLabel.Text", faction.getName());
         commandBuilder.set("#memberCountLabel.Text", I18n.get("ui.faction_show.member_count", faction.getMemberCount()));
         
@@ -282,8 +279,8 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         commandBuilder.set("#diplomacyButton.Visible", true);
         commandBuilder.set("#claimButton.Visible", true);
         commandBuilder.set("#settingsButton.Visible", true);
+        commandBuilder.set("#leaderboardButton.Visible", true);
         commandBuilder.set("#prismButton.Visible", true);
-        commandBuilder.set("#prismButton.Text", I18n.get("ui.faction_show.button_prism"));
         commandBuilder.set("#createFactionButton.Visible", false);
         commandBuilder.set("#createFactionButtonInSection.Visible", false); // Hide button in section (section is hidden)
         
@@ -311,6 +308,14 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
                 .append("Action", "settings")
         );
         
+        // Bind leaderboard button
+        eventBuilder.addEventBinding(
+            CustomUIEventBindingType.Activating,
+            "#leaderboardButton",
+            new EventData()
+                .append("Action", "leaderboard")
+        );
+        
         // Bind prism button
         eventBuilder.addEventBinding(
             CustomUIEventBindingType.Activating,
@@ -331,70 +336,77 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
     private void buildPendingInvitesState(UICommandBuilder commandBuilder, UIEventBuilder eventBuilder,
                                          Ref<EntityStore> ref, Store<EntityStore> store,
                                          List<PendingInvite> pendingInvites, UUID playerUuid) {
-        // Show pending invites section, hide others
+        // Show pending invites section only, hide others
         commandBuilder.set("#factionInfoSection.Visible", false);
-        commandBuilder.set("#pendingInvitesPageSection.Visible", true);
         commandBuilder.set("#createFactionSection.Visible", false);
         commandBuilder.set("#noPermissionSection.Visible", false);
-        
+        commandBuilder.set("#pendingInvitesPageSection.Visible", true);
+        commandBuilder.set("#pendingInvitesPageSection #headerLabel.Text", I18n.get("ui.pending_invites.header"));
+        commandBuilder.set("#pendingInvitesPageSection #noInvitesLabel.Text", I18n.get("ui.pending_invites.no_invites"));
+
+        buildPendingInvitesList(commandBuilder, eventBuilder, pendingInvites);
+
         // Hide all action buttons
         commandBuilder.set("#diplomacyButton.Visible", false);
         commandBuilder.set("#claimButton.Visible", false);
         commandBuilder.set("#settingsButton.Visible", false);
+        commandBuilder.set("#leaderboardButton.Visible", false);
         commandBuilder.set("#prismButton.Visible", false);
-        commandBuilder.set("#createFactionButton.Visible", false); // Always hide bottom button
-        commandBuilder.set("#createFactionButtonInSection.Visible", false); // Hide button in section (section is hidden)
-        
-        // Bind close button
+        commandBuilder.set("#createFactionButton.Visible", false);
+        commandBuilder.set("#createFactionButtonInSection.Visible", false);
+
         eventBuilder.addEventBinding(
             CustomUIEventBindingType.Activating,
             "#closeButton",
             new EventData()
                 .append("Action", "close")
         );
-        
-        // For pending invites, redirect to dedicated page
-        // This is simpler than trying to build dynamic invite cards here
-        // The UI will show a message, but we'll handle navigation in handleDataEvent
     }
     
     private void buildCreateFactionState(UICommandBuilder commandBuilder, UIEventBuilder eventBuilder,
                                         Ref<EntityStore> ref, Store<EntityStore> store,
-                                        UUID playerUuid) {
+                                        UUID playerUuid, List<PendingInvite> pendingInvites) {
         // Hide other sections first
         commandBuilder.set("#factionInfoSection.Visible", false);
-        commandBuilder.set("#pendingInvitesPageSection.Visible", false);
         commandBuilder.set("#noPermissionSection.Visible", false);
-        
+
         // Show create faction section and set its labels/placeholder/button from I18n
         commandBuilder.set("#createFactionSection.Visible", true);
         commandBuilder.set("#createFactionSection #instructionsLabel.Text", I18n.get("ui.create.instructions"));
         commandBuilder.set("#createFactionSection #FactionNameInput.PlaceholderText", I18n.get("ui.create.placeholder"));
         commandBuilder.set("#createFactionButtonInSection.Text", I18n.get("ui.create.create_button"));
-        
+
+        // Show pending invites section below create form when player has invites
+        if (pendingInvites != null && !pendingInvites.isEmpty()) {
+            commandBuilder.set("#pendingInvitesPageSection.Visible", true);
+            commandBuilder.set("#pendingInvitesPageSection #headerLabel.Text", I18n.get("ui.pending_invites.header"));
+            commandBuilder.set("#pendingInvitesPageSection #noInvitesLabel.Text", I18n.get("ui.pending_invites.no_invites"));
+            buildPendingInvitesList(commandBuilder, eventBuilder, pendingInvites);
+        } else {
+            commandBuilder.set("#pendingInvitesPageSection.Visible", false);
+        }
+
         // Hide all action buttons
         commandBuilder.set("#diplomacyButton.Visible", false);
         commandBuilder.set("#claimButton.Visible", false);
         commandBuilder.set("#settingsButton.Visible", false);
+        commandBuilder.set("#leaderboardButton.Visible", false);
         commandBuilder.set("#prismButton.Visible", false);
         commandBuilder.set("#createFactionButton.Visible", false);
-        
+
         // Show create button in section (next to input field)
         commandBuilder.set("#createFactionButtonInSection.Visible", true);
         ConfigUtil.debug("FactionShowPage: Showing create faction section and button");
-        
+
         // Bind create button in section with ALL input values
-        // The EventData captures:
-        //   - "Action" = "createFaction" (explicit value)
-        //   - "@FactionName" = current value of #FactionNameInput TextField
         eventBuilder.addEventBinding(
             CustomUIEventBindingType.Activating,
             "#createFactionButtonInSection",
             new EventData()
                 .append("Action", "createFaction")
-                .append("@FactionName", "#FactionNameInput.Value")  // Read TextField value
+                .append("@FactionName", "#FactionNameInput.Value")
         );
-        
+
         // Bind close button
         eventBuilder.addEventBinding(
             CustomUIEventBindingType.Activating,
@@ -402,6 +414,50 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
             new EventData()
                 .append("Action", "close")
         );
+    }
+
+    /**
+     * Populates #InvitesList with accept/refuse cards for the player's pending invites.
+     * Uses a .ui file per card so the client can parse it (AppendInline fails when $C is not in scope).
+     */
+    private void buildPendingInvitesList(UICommandBuilder commandBuilder, UIEventBuilder eventBuilder,
+                                         List<PendingInvite> pendingInvites) {
+        FactionManager factionManager = FactionManager.getInstance();
+
+        commandBuilder.clear("#InvitesList");
+
+        for (int i = 0; i < pendingInvites.size(); i++) {
+            PendingInvite invite = pendingInvites.get(i);
+            UUID factionId = invite.getFactionId();
+            FactionInfo faction = factionManager.getFactionById(factionId);
+            String factionName = faction != null ? faction.getName() : "Unknown Faction";
+            String inviterName = invite.getInviterName() != null ? invite.getInviterName() : "Unknown";
+
+            commandBuilder.append("#InvitesList", "Pages/FactionBase/PendingInviteCard.ui");
+
+            String selector = "#InvitesList[" + i + "]";
+            String rowText = I18n.get("ui.pending_invites.faction_label", factionName) + " — " + I18n.get("ui.pending_invites.invited_by", inviterName);
+            commandBuilder.set(selector + " #RowLabel.Text", rowText);
+            commandBuilder.set(selector + " #AcceptButton.Text", I18n.get("ui.row.accept"));
+            commandBuilder.set(selector + " #RefuseButton.Text", I18n.get("ui.row.decline"));
+
+            String acceptSelector = selector + " #AcceptButton";
+            String refuseSelector = selector + " #RefuseButton";
+            eventBuilder.addEventBinding(
+                CustomUIEventBindingType.Activating,
+                acceptSelector,
+                new EventData()
+                    .append("Action", "accept")
+                    .append("FactionId", factionId.toString())
+            );
+            eventBuilder.addEventBinding(
+                CustomUIEventBindingType.Activating,
+                refuseSelector,
+                new EventData()
+                    .append("Action", "refuse")
+                    .append("FactionId", factionId.toString())
+            );
+        }
     }
     
     private void buildNoPermissionState(UICommandBuilder commandBuilder, UIEventBuilder eventBuilder) {
@@ -417,6 +473,7 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         commandBuilder.set("#diplomacyButton.Visible", false);
         commandBuilder.set("#claimButton.Visible", false);
         commandBuilder.set("#settingsButton.Visible", false);
+        commandBuilder.set("#leaderboardButton.Visible", false);
         commandBuilder.set("#prismButton.Visible", false);
         commandBuilder.set("#createFactionButton.Visible", false);
         commandBuilder.set("#createFactionButtonInSection.Visible", false);
@@ -519,6 +576,19 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
             return;
         }
         
+        if ("leaderboard".equals(data.action)) {
+            if (currentFaction == null) {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.faction.must_be_in_faction_diplomacy"))
+                    .color(Color.RED).bold(true));
+                return;
+            }
+            FactionLeaderboardPage leaderboardPage = adminViewFactionId != null
+                ? new FactionLeaderboardPage(playerRef, adminViewFactionId)
+                : new FactionLeaderboardPage(playerRef);
+            player.getPageManager().openCustomPage(ref, store, leaderboardPage);
+            return;
+        }
+        
         if ("prism".equals(data.action)) {
             ConfigUtil.debug("[FactionShowPage.prism] ENTER playerUuid=" + playerUuid + " adminViewFactionId=" + adminViewFactionId + " currentFaction=" + (currentFaction != null ? currentFaction.getName() : "null"));
             if (currentFaction == null) {
@@ -599,11 +669,10 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
         if ("createFaction".equals(data.action)) {
             // Handle faction creation directly when triggered from inline form
             if (data.factionName != null && !data.factionName.trim().isEmpty()) {
-                // Inline creation - handle directly
                 handleInlineFactionCreation(ref, store, player, playerUuid, data.factionName);
                 return;
             }
-            
+
             // If no factionName provided, check for pending invites or navigate to create page
             List<PendingInvite> pendingInvites = factionManager.getPendingInvitesForPlayer(playerUuid);
             if (!pendingInvites.isEmpty()) {
@@ -611,13 +680,54 @@ public class FactionShowPage extends InteractiveCustomUIPage<FactionShowPageEven
                 player.getPageManager().openCustomPage(ref, store, invitesPage);
                 return;
             }
-            
-            // Otherwise, open create faction page
+
             FactionCreatePage createPage = new FactionCreatePage(playerRef);
             player.getPageManager().openCustomPage(ref, store, createPage);
             return;
         }
-        
+
+        if ("accept".equals(data.action) && data.factionId != null) {
+            if (currentFaction != null) {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.already_in_faction"))
+                    .color(Color.RED).bold(true));
+                refreshPage(ref, store);
+                return;
+            }
+            FactionInfo targetFaction = factionManager.getFactionById(data.factionId);
+            if (targetFaction == null) {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.faction_gone"))
+                    .color(Color.RED).bold(true));
+                refreshPage(ref, store);
+                return;
+            }
+            boolean success = factionManager.addPlayerToFaction(playerUuid, data.factionId);
+            if (success) {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw("You have joined faction '" + targetFaction.getName() + "'!")
+                    .color(Color.GREEN).bold(true));
+                refreshPage(ref, store);
+            } else {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.join_failed"))
+                    .color(Color.RED).bold(true));
+                refreshPage(ref, store);
+            }
+            return;
+        }
+
+        if ("refuse".equals(data.action) && data.factionId != null) {
+            FactionInfo faction = factionManager.getFactionById(data.factionId);
+            String factionName = faction != null ? faction.getName() : "Unknown";
+            boolean removed = factionManager.cancelPendingInvite(playerUuid, data.factionId);
+            if (removed) {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.refused", factionName))
+                    .color(Color.YELLOW).bold(true));
+            } else {
+                player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.pending_invites.refuse_failed"))
+                    .color(Color.RED).bold(true));
+            }
+            refreshPage(ref, store);
+            return;
+        }
+
         // Close the page for any unhandled actions
         player.getPageManager().setPage(ref, store, Page.None);
     }

@@ -2,8 +2,8 @@ $C = "../../Common.ui";
 
 Group {
   LayoutMode: Right;
-  Anchor: (Height: 52);
-  Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
+  Anchor: (Height: 92);
+  Padding: (Left: 12, Right: 12, Top: 8, Bottom: 8);
   Background: #1e2832(0.6);
 
   Group {
@@ -19,6 +19,7 @@ Group {
       );
       Anchor: (Height: 22);
     }
+    Group { Anchor: (Height: 4); }
     Label #CoordsLabel {
       Text: "";
       Style: (
@@ -27,6 +28,7 @@ Group {
       );
       Anchor: (Height: 20);
     }
+    Group { Anchor: (Height: 4); }
     Label #MultiplierLabel {
       Text: "";
       Style: (
@@ -35,6 +37,7 @@ Group {
       );
       Anchor: (Height: 18);
     }
+    Group { Anchor: (Height: 8); }
   }
 
   Group { Anchor: (Width: 12); }

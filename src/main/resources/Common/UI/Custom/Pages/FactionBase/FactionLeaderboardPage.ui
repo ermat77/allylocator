@@ -1,0 +1,57 @@
+$C = "../../Common.ui";
+
+$C.@PageOverlay {
+
+  $C.@DecoratedContainer {
+    Anchor: (Width: 800, Height: 700);
+
+    #Title {
+      Group {
+        $C.@Title #TitleText {
+          @Text = "Leaderboard";
+        }
+      }
+    }
+
+    #Content {
+      LayoutMode: Top;
+      Padding: (Left: 20, Right: 20, Top: 20, Bottom: 20);
+      FlexWeight: 1;
+
+      Label #noLeaderboardLabel {
+        Text: "No factions with points yet.";
+        Style: (
+          FontSize: 16,
+          TextColor: #96a9be
+        );
+        Anchor: (Height: 30);
+        Visible: false;
+      }
+
+      Group #LeaderboardList {
+        LayoutMode: TopScrolling;
+        ScrollbarStyle: $C.@DefaultScrollbarStyle;
+        FlexWeight: 1;
+      }
+
+      Group { Anchor: (Height: 16); }
+
+      Group #InteractionButtons {
+        LayoutMode: Right;
+        Anchor: (Height: 44);
+
+        $C.@TextButton #backButton {
+          Text: "Back";
+          Anchor: (Width: 120, Height: 40);
+        }
+
+        Group { Anchor: (Width: 12); }
+
+        $C.@CancelTextButton #closeButton {
+          Text: "Close";
+          Anchor: (Width: 110, Height: 40);
+        }
+      }
+    }
+  }
+}

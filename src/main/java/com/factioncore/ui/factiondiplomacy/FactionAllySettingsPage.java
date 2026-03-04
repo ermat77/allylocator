@@ -3,6 +3,7 @@ package com.factioncore.ui.factiondiplomacy;
 import com.factioncore.diplomacy.AllySettings;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
+import com.factioncore.ui.factionbase.FactionShowPage;
 import com.factioncore.ui.factiondiplomacy.events.FactionAllySettingsPageEventData;
 import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.I18n;
@@ -118,7 +119,10 @@ public class FactionAllySettingsPage extends InteractiveCustomUIPage<FactionAlly
 
         if ("back".equals(data.action) || "close".equals(data.action)) {
             ConfigUtil.debug("[AllySettings] handleDataEvent() back/close");
-            player.getPageManager().setPage(ref, store, Page.None);
+            FactionShowPage showPage = contextFactionId != null
+                ? new FactionShowPage(playerRef, contextFactionId)
+                : new FactionShowPage(playerRef);
+            player.getPageManager().openCustomPage(ref, store, showPage);
             return;
         }
 

@@ -1,327 +1,134 @@
 $C = "../../Common.ui";
 
-$C.@PageOverlay {
+Group {
+  Anchor: (Width: 520, Height: 520);
+  Background: #141c26(0.98);
+  LayoutMode: Top;
+  Padding: (Full: 20);
 
-  $C.@DecoratedContainer {
-    Anchor: (Width: 600, Height: 500);
+  Label #TitleLabel {
+    Text: "Member Permissions";
+    Anchor: (Height: 45);
+    Style: (
+      FontSize: 26,
+      TextColor: #ffffff,
+      HorizontalAlignment: Center,
+      RenderBold: true
+    );
+  }
 
-    #Title {
-      Group {
-        $C.@Title #TitleText {
-          @Text = "Member Permissions";
-        }
-      }
+  Group {
+    Anchor: (Height: 1);
+    Background: #2b3542;
+  }
+
+  Group { Anchor: (Height: 16); }
+
+  Label #instructionsLabel {
+    Text: "Select permissions to grant to this member:";
+    Style: (
+      FontSize: 16,
+      TextColor: #CCCCCC
+    );
+    Anchor: (Bottom: 10);
+  }
+
+  Group #CheckboxList {
+    LayoutMode: TopScrolling;
+    ScrollbarStyle: $C.@DefaultScrollbarStyle;
+    FlexWeight: 1;
+
+    $C.@CheckBoxWithLabel #Rename {
+      @Text = "Rename Faction";
+      Padding: (Bottom: 8);
     }
 
-    #Content {
-      LayoutMode: Top;
-      Padding: (Left: 20, Right: 20, Top: 20, Bottom: 20);
+    $C.@CheckBoxWithLabel #Color {
+      @Text = "Change Color";
+      Padding: (Bottom: 8);
+    }
 
-      Label #instructionsLabel {
-        Text: "Select permissions to grant to this member:";
-        Style: (
-          FontSize: 16,
-          TextColor: #CCCCCC
-        );
-        Anchor: (Bottom: 10);
-      }
+    $C.@CheckBoxWithLabel #Invite {
+      @Text = "Invite Members";
+      Padding: (Bottom: 8);
+    }
 
-      Group #permissionsList {
-        LayoutMode: Top;
-        Anchor: (Bottom: 10);
+    $C.@CheckBoxWithLabel #Allies {
+      @Text = "Manage Allies";
+      Padding: (Bottom: 8);
+    }
 
-        Group #renameGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
+    $C.@CheckBoxWithLabel #Kick {
+      @Text = "Kick Members";
+      Padding: (Bottom: 8);
+    }
 
-          CheckBox #RenameCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
+    $C.@CheckBoxWithLabel #Enemies {
+      @Text = "Manage Enemies";
+      Padding: (Bottom: 8);
+    }
 
-          Label #renameLabel {
-            Text: "Rename Faction";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
+    $C.@CheckBoxWithLabel #OpenChest {
+      @Text = "Open Chest";
+      Padding: (Bottom: 8);
+    }
 
-        Group #colorGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
+    $C.@CheckBoxWithLabel #OpenDoor {
+      @Text = "Open Door";
+      Padding: (Bottom: 8);
+    }
 
-          CheckBox #ColorCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
+    $C.@CheckBoxWithLabel #OpenBench {
+      @Text = "Use Bench";
+      Padding: (Bottom: 8);
+    }
 
-          Label #colorLabel {
-            Text: "Change Color";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
+    $C.@CheckBoxWithLabel #UseChair {
+      @Text = "Use Chair";
+      Padding: (Bottom: 8);
+    }
 
-        Group #inviteGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
+    $C.@CheckBoxWithLabel #UsePortal {
+      @Text = "Use Portal";
+      Padding: (Bottom: 8);
+    }
 
-          CheckBox #InviteCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
+    $C.@CheckBoxWithLabel #PlaceBlock {
+      @Text = "Place Block";
+      Padding: (Bottom: 8);
+    }
 
-          Label #inviteLabel {
-            Text: "Invite Members";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
+    $C.@CheckBoxWithLabel #BreakBlock {
+      @Text = "Break Block";
+      Padding: (Bottom: 8);
+    }
 
-        Group #alliesGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
+    $C.@CheckBoxWithLabel #SetHome {
+      @Text = "Set Faction Home";
+      Padding: (Bottom: 8);
+    }
 
-          CheckBox #AlliesCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
+    $C.@CheckBoxWithLabel #Home {
+      @Text = "Use Faction Home";
+      Padding: (Bottom: 8);
+    }
+  }
 
-          Label #alliesLabel {
-            Text: "Manage Allies";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
+  Group {
+    Anchor: (Height: 1);
+    Background: #2b3542(0.5);
+  }
 
-        Group #kickGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
+  Group { Anchor: (Height: 16); }
 
-          CheckBox #KickCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
+  Group #ActionButtons {
+    LayoutMode: Right;
+    Anchor: (Height: 44);
 
-          Label #kickLabel {
-            Text: "Kick Members";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #enemiesGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #EnemiesCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #enemiesLabel {
-            Text: "Manage Enemies";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #openChestGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #OpenChestCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #openChestLabel {
-            Text: "Open Chest";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #openDoorGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #OpenDoorCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #openDoorLabel {
-            Text: "Open Door";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #openBenchGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #OpenBenchCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #openBenchLabel {
-            Text: "Use Bench";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #useChairGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #UseChairCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #useChairLabel {
-            Text: "Use Chair";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #usePortalGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #UsePortalCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #usePortalLabel {
-            Text: "Use Portal";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #placeBlockGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #PlaceBlockCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #placeBlockLabel {
-            Text: "Place Block";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #breakBlockGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #BreakBlockCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #breakBlockLabel {
-            Text: "Break Block";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #setHomeGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #SetHomeCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #setHomeLabel {
-            Text: "Set Faction Home";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-
-        Group #homeGroup {
-          LayoutMode: Right;
-          Anchor: (Height: 30);
-
-          CheckBox #HomeCheckbox {
-            Anchor: (Width: 20, Height: 20);
-          }
-
-          Label #homeLabel {
-            Text: "Use Faction Home";
-            Style: (
-              FontSize: 14,
-              TextColor: #CCCCCC
-            );
-            Anchor: (Left: 10);
-          }
-        }
-      }
-
-      Group #spacer {
-        FlexWeight: 1;
-      }
-
-      Group #ActionButtons {
-        LayoutMode: Right;
-        Anchor: (Bottom: 10);
-
-        $C.@TextButton #saveButton {
-          Text: "Save";
-          Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
-        }
-
-        $C.@CancelTextButton #cancelButton {
-          Text: "Cancel";
-          Padding: (Left: 12, Right: 12, Top: 6, Bottom: 6);
-          Anchor: (Right: 10);
-        }
-      }
+    $C.@TextButton #backButton {
+      Text: "BACK";
+      Anchor: (Width: 120, Height: 40);
+      Background: (Color: #4870ddff);
     }
   }
 }
-
-$C.@BackButton {}

@@ -3,9 +3,26 @@
     "Name": "FactionCore",
     "Main": "com.factioncore.Main",
     "Version": "0.0.2",
-    "DisabledByDefault": false,
-    "IncludesAssetPack": true,
+    "Description": "FactionCore plugin with custom assets",
+    "Authors": [
+        {
+            "Name": "FactionCore"
+        }
+    ],
+    "Website": "",
+    "ServerVersion": "2026.02.19-1a311a592",
+    "Dependencies": {
+        
+    },
     "OptionalDependencies": {
         "com.delaytp:DelayTp": "*"
-    }
+    },
+    "LoadBefore": {
+        
+    },
+    "DisabledByDefault": false,
+    "IncludesAssetPack": true,
+    "SubPlugins": [
+        
+    ]
 }

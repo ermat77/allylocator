@@ -3,9 +3,9 @@ package com.factioncore.ui.factionbase;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.ui.factionbase.events.FactionMemberPermissionsPageEventData;
-import com.factioncore.util.ConfigUtil;
 import com.factioncore.util.I18n;
 import com.factioncore.util.PermissionUtil;
+import com.factioncore.util.PlayerUtils;
 import com.hypixel.hytale.component.Ref;
 import com.hypixel.hytale.component.Store;
 import com.hypixel.hytale.protocol.packets.interface_.CustomPageLifetime;
@@ -17,7 +17,6 @@ import com.hypixel.hytale.server.core.ui.builder.EventData;
 import com.hypixel.hytale.server.core.ui.builder.UICommandBuilder;
 import com.hypixel.hytale.server.core.ui.builder.UIEventBuilder;
 import com.hypixel.hytale.server.core.universe.PlayerRef;
-import com.hypixel.hytale.server.core.universe.Universe;
 import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import java.awt.Color;
@@ -28,11 +27,10 @@ import javax.annotation.Nonnull;
 
 /**
  * UI page for managing member permissions in a faction.
- * Only the faction owner can access this page.
- * Uses native Hytale UI system with .ui files.
+ * Follows FactionAllySettingsPage pattern: CheckBoxWithLabel in UI, ValueChanged per checkbox (no Save-button value binding).
  */
 public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<FactionMemberPermissionsPageEventData> {
-    
+
     private final UUID targetMemberUuid;
     /** When non-null (e.g. /f admin Flowers), we edit this faction's member permissions. When null, we use the player's faction. */
     private final UUID contextFactionId;
@@ -41,16 +39,12 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         this(playerRef, targetMemberUuid, null);
     }
 
-    /**
-     * Opens member permissions. When contextFactionId is non-null (admin flow), we edit that faction's member.
-     * When null, we edit the player's faction's member.
-     */
     public FactionMemberPermissionsPage(@Nonnull PlayerRef playerRef, @Nonnull UUID targetMemberUuid, UUID contextFactionId) {
-        super(playerRef, CustomPageLifetime.CanDismiss, FactionMemberPermissionsPageEventData.CODEC);
+        super(playerRef, CustomPageLifetime.CanDismissOrCloseThroughInteraction, FactionMemberPermissionsPageEventData.CODEC);
         this.targetMemberUuid = targetMemberUuid;
         this.contextFactionId = contextFactionId;
     }
-    
+
     @Override
     public void build(
         @Nonnull Ref<EntityStore> ref,
@@ -63,8 +57,7 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
         FactionInfo faction = contextFactionId != null
             ? factionManager.getFactionById(contextFactionId)
             : factionManager.getFactionFromPlayer(playerUuid);
-        
-        // Validate: admin context, or owner, or has admin permission
+
         boolean canManage = faction != null && ((contextFactionId != null) || faction.isOwner(playerUuid) || PermissionUtil.canManageMemberPermissionsAdmin(playerUuid));
         if (faction == null || !canManage) {
             Player player = store.getComponent(ref, Player.getComponentType());
@@ -75,8 +68,7 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
             }
             return;
         }
-        
-        // Validate target member
+
         if (targetMemberUuid == null || !faction.isMember(targetMemberUuid)) {
             Player player = store.getComponent(ref, Player.getComponentType());
             if (player != null) {
@@ -86,205 +78,118 @@ public class FactionMemberPermissionsPage extends InteractiveCustomUIPage<Factio
             }
             return;
         }
-        
-        // Get member name and current permissions
-        String memberName = getPlayerName(targetMemberUuid);
+
+        String memberName = PlayerUtils.getPlayerName(targetMemberUuid);
         Set<String> currentPermissions = com.factioncore.permission.FactionPermissionManager.getInstance().getMemberPermissions(targetMemberUuid, faction.getId());
-        
+
         commandBuilder.append("Pages/FactionBase/FactionMemberPermissionsPage.ui");
 
-        // Set static UI text from I18n
+        commandBuilder.set("#TitleLabel.Text", I18n.get("ui.member_permissions.title", memberName));
         commandBuilder.set("#instructionsLabel.Text", I18n.get("ui.member_permissions.instructions"));
-        commandBuilder.set("#renameGroup #renameLabel.Text", I18n.get("ui.member_permissions.rename"));
-        commandBuilder.set("#colorGroup #colorLabel.Text", I18n.get("ui.member_permissions.color"));
-        commandBuilder.set("#inviteGroup #inviteLabel.Text", I18n.get("ui.member_permissions.invite"));
-        commandBuilder.set("#alliesGroup #alliesLabel.Text", I18n.get("ui.member_permissions.allies"));
-        commandBuilder.set("#kickGroup #kickLabel.Text", I18n.get("ui.member_permissions.kick"));
-        commandBuilder.set("#enemiesGroup #enemiesLabel.Text", I18n.get("ui.member_permissions.enemies"));
-        commandBuilder.set("#openChestGroup #openChestLabel.Text", I18n.get("ui.member_permissions.open_chest"));
-        commandBuilder.set("#openDoorGroup #openDoorLabel.Text", I18n.get("ui.member_permissions.open_door"));
-        commandBuilder.set("#openBenchGroup #openBenchLabel.Text", I18n.get("ui.member_permissions.open_bench"));
-        commandBuilder.set("#useChairGroup #useChairLabel.Text", I18n.get("ui.member_permissions.use_chair"));
-        commandBuilder.set("#usePortalGroup #usePortalLabel.Text", I18n.get("ui.member_permissions.use_portal"));
-        commandBuilder.set("#placeBlockGroup #placeBlockLabel.Text", I18n.get("ui.member_permissions.place_block"));
-        commandBuilder.set("#breakBlockGroup #breakBlockLabel.Text", I18n.get("ui.member_permissions.break_block"));
-        commandBuilder.set("#setHomeGroup #setHomeLabel.Text", I18n.get("ui.member_permissions.set_home"));
-        commandBuilder.set("#homeGroup #homeLabel.Text", I18n.get("ui.member_permissions.home"));
-        commandBuilder.set("#saveButton.Text", I18n.get("ui.member_permissions.save"));
-        commandBuilder.set("#cancelButton.Text", I18n.get("ui.member_permissions.cancel"));
-        
-        // Update title with member name
-        commandBuilder.set("#Title #TitleText.Text", I18n.get("ui.member_permissions.title", memberName));
-        
-        // Set checkbox states from current permissions
-        commandBuilder.set("#RenameCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_RENAME));
-        commandBuilder.set("#ColorCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_CHANGE_COLOR));
-        commandBuilder.set("#InviteCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_INVITE_MEMBERS));
-        commandBuilder.set("#AlliesCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_MANAGE_ALLIES));
-        commandBuilder.set("#KickCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_KICK_MEMBERS));
-        commandBuilder.set("#EnemiesCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_MANAGE_ENEMIES));
-        commandBuilder.set("#OpenChestCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_OPEN_CHEST));
-        commandBuilder.set("#OpenDoorCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_OPEN_DOOR));
-        commandBuilder.set("#OpenBenchCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_OPEN_BENCH));
-        commandBuilder.set("#UseChairCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_USE_CHAIR));
-        commandBuilder.set("#UsePortalCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_USE_PORTAL));
-        commandBuilder.set("#PlaceBlockCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_PLACE_BLOCK));
-        commandBuilder.set("#BreakBlockCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_BREAK_BLOCK));
-        commandBuilder.set("#SetHomeCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_SET_HOME));
-        commandBuilder.set("#HomeCheckbox.Value", currentPermissions.contains(PermissionUtil.FACTION_PERM_HOME));
-        
-        // Bind save button with all checkbox values and target member UUID
-        eventBuilder.addEventBinding(
-            CustomUIEventBindingType.Activating,
-            "#saveButton",
-            new EventData()
-                .append("Action", "save")
-                .append("TargetMemberUuid", targetMemberUuid.toString())
-                .append("@RenamePermission", "#RenameCheckbox.Value")
-                .append("@ColorPermission", "#ColorCheckbox.Value")
-                .append("@InvitePermission", "#InviteCheckbox.Value")
-                .append("@AlliesPermission", "#AlliesCheckbox.Value")
-                .append("@KickPermission", "#KickCheckbox.Value")
-                .append("@EnemiesPermission", "#EnemiesCheckbox.Value")
-                .append("@OpenChestPermission", "#OpenChestCheckbox.Value")
-                .append("@OpenDoorPermission", "#OpenDoorCheckbox.Value")
-                .append("@OpenBenchPermission", "#OpenBenchCheckbox.Value")
-                .append("@UseChairPermission", "#UseChairCheckbox.Value")
-                .append("@UsePortalPermission", "#UsePortalCheckbox.Value")
-                .append("@PlaceBlockPermission", "#PlaceBlockCheckbox.Value")
-                .append("@BreakBlockPermission", "#BreakBlockCheckbox.Value")
-                .append("@SetHomePermission", "#SetHomeCheckbox.Value")
-                .append("@HomePermission", "#HomeCheckbox.Value")
-        );
-        
-        // Bind cancel button
-        eventBuilder.addEventBinding(
-            CustomUIEventBindingType.Activating,
-            "#cancelButton",
-            new EventData()
-                .append("Action", "cancel")
-        );
+        commandBuilder.set("#backButton.Text", I18n.get("ui.member_permissions.back"));
+
+        // Same pattern as FactionAllySettingsPage: set #CheckBox.Value / #CheckBox.Disabled, bind ValueChanged with Action only (no @-refs)
+        boolean canEdit = true;
+        addPermissionToggle(commandBuilder, eventBuilder, "#Rename", "rename", PermissionUtil.FACTION_PERM_RENAME, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#Color", "color", PermissionUtil.FACTION_PERM_CHANGE_COLOR, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#Invite", "invite", PermissionUtil.FACTION_PERM_INVITE_MEMBERS, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#Allies", "allies", PermissionUtil.FACTION_PERM_MANAGE_ALLIES, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#Kick", "kick", PermissionUtil.FACTION_PERM_KICK_MEMBERS, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#Enemies", "enemies", PermissionUtil.FACTION_PERM_MANAGE_ENEMIES, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#OpenChest", "openChest", PermissionUtil.FACTION_PERM_OPEN_CHEST, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#OpenDoor", "openDoor", PermissionUtil.FACTION_PERM_OPEN_DOOR, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#OpenBench", "openBench", PermissionUtil.FACTION_PERM_OPEN_BENCH, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#UseChair", "useChair", PermissionUtil.FACTION_PERM_USE_CHAIR, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#UsePortal", "usePortal", PermissionUtil.FACTION_PERM_USE_PORTAL, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#PlaceBlock", "placeBlock", PermissionUtil.FACTION_PERM_PLACE_BLOCK, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#BreakBlock", "breakBlock", PermissionUtil.FACTION_PERM_BREAK_BLOCK, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#SetHome", "setHome", PermissionUtil.FACTION_PERM_SET_HOME, currentPermissions, canEdit);
+        addPermissionToggle(commandBuilder, eventBuilder, "#Home", "home", PermissionUtil.FACTION_PERM_HOME, currentPermissions, canEdit);
+
+        eventBuilder.addEventBinding(CustomUIEventBindingType.Activating, "#backButton", new EventData().append("Action", "back"));
     }
-    
+
+    /** Same as FactionAllySettingsPage addAllyToggle: set Value/Disabled and bind ValueChanged with Action only. */
+    private void addPermissionToggle(UICommandBuilder commandBuilder, UIEventBuilder eventBuilder, String element, String action, String permissionKey, Set<String> currentPermissions, boolean enabled) {
+        boolean value = currentPermissions.contains(permissionKey);
+        commandBuilder.set(element + " #CheckBox.Value", value);
+        commandBuilder.set(element + " #CheckBox.Disabled", !enabled);
+        eventBuilder.addEventBinding(CustomUIEventBindingType.ValueChanged, element + " #CheckBox", new EventData().append("Action", action), false);
+    }
+
     @Override
     public void handleDataEvent(@Nonnull Ref<EntityStore> ref, @Nonnull Store<EntityStore> store, @Nonnull FactionMemberPermissionsPageEventData data) {
         Player player = store.getComponent(ref, Player.getComponentType());
         if (player == null) {
             return;
         }
-        
-        if ("cancel".equals(data.action)) {
+
+        if ("back".equals(data.action) || "close".equals(data.action)) {
+            FactionShowPage showPage = contextFactionId != null
+                ? new FactionShowPage(playerRef, contextFactionId)
+                : new FactionShowPage(playerRef);
+            player.getPageManager().openCustomPage(ref, store, showPage);
+            return;
+        }
+
+        UUID playerUuid = playerRef.getUuid();
+        FactionManager factionManager = FactionManager.getInstance();
+        FactionInfo faction = contextFactionId != null
+            ? factionManager.getFactionById(contextFactionId)
+            : factionManager.getFactionFromPlayer(playerUuid);
+        if (faction == null || !faction.isMember(targetMemberUuid)) {
             player.getPageManager().setPage(ref, store, Page.None);
             return;
         }
-        
-        if (!"save".equals(data.action)) {
+        if (contextFactionId == null && !faction.isOwner(playerUuid) && !PermissionUtil.canManageMemberPermissionsAdmin(playerUuid)) {
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.owner_only")).color(Color.RED));
             return;
         }
-        
-        UUID playerUuid = playerRef.getUuid();
-        
-        // Re-validate: admin context, or owner, or admin permission
-        FactionManager factionManager = FactionManager.getInstance();
-        FactionInfo currentFaction = contextFactionId != null
-            ? factionManager.getFactionById(contextFactionId)
-            : factionManager.getFactionFromPlayer(playerUuid);
-        boolean canManage = currentFaction != null && ((contextFactionId != null) || currentFaction.isOwner(playerUuid) || PermissionUtil.canManageMemberPermissionsAdmin(playerUuid));
-        if (currentFaction == null || !canManage) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.owner_only"))
-                .color(Color.RED).bold(true));
-            return;
+
+        Set<String> permissions = com.factioncore.permission.FactionPermissionManager.getInstance().getMemberPermissions(targetMemberUuid, faction.getId());
+        if (permissions == null) {
+            permissions = new HashSet<>();
         }
-        
-        // Get target member UUID from event data (fallback to field if not set)
-        UUID targetUuid = data.targetMemberUuid != null ? data.targetMemberUuid : targetMemberUuid;
-        if (targetUuid == null || !currentFaction.isMember(targetUuid)) {
-            player.sendMessage(com.hypixel.hytale.server.core.Message.raw("Invalid member")
-                .color(Color.RED).bold(true));
-            return;
+        String action = data.action != null ? data.action : "";
+        String toggledPerm = null;
+
+        switch (action) {
+            case "rename": toggledPerm = PermissionUtil.FACTION_PERM_RENAME; break;
+            case "color": toggledPerm = PermissionUtil.FACTION_PERM_CHANGE_COLOR; break;
+            case "invite": toggledPerm = PermissionUtil.FACTION_PERM_INVITE_MEMBERS; break;
+            case "allies": toggledPerm = PermissionUtil.FACTION_PERM_MANAGE_ALLIES; break;
+            case "kick": toggledPerm = PermissionUtil.FACTION_PERM_KICK_MEMBERS; break;
+            case "enemies": toggledPerm = PermissionUtil.FACTION_PERM_MANAGE_ENEMIES; break;
+            case "openChest": toggledPerm = PermissionUtil.FACTION_PERM_OPEN_CHEST; break;
+            case "openDoor": toggledPerm = PermissionUtil.FACTION_PERM_OPEN_DOOR; break;
+            case "openBench": toggledPerm = PermissionUtil.FACTION_PERM_OPEN_BENCH; break;
+            case "useChair": toggledPerm = PermissionUtil.FACTION_PERM_USE_CHAIR; break;
+            case "usePortal": toggledPerm = PermissionUtil.FACTION_PERM_USE_PORTAL; break;
+            case "placeBlock": toggledPerm = PermissionUtil.FACTION_PERM_PLACE_BLOCK; break;
+            case "breakBlock": toggledPerm = PermissionUtil.FACTION_PERM_BREAK_BLOCK; break;
+            case "setHome": toggledPerm = PermissionUtil.FACTION_PERM_SET_HOME; break;
+            case "home": toggledPerm = PermissionUtil.FACTION_PERM_HOME; break;
+            default: break;
         }
-        
-        // Build permission set from checkbox values
-        Set<String> selectedPermissions = new HashSet<>();
-        if (Boolean.TRUE.equals(data.renamePermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_RENAME);
-        }
-        if (Boolean.TRUE.equals(data.colorPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_CHANGE_COLOR);
-        }
-        if (Boolean.TRUE.equals(data.invitePermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_INVITE_MEMBERS);
-        }
-        if (Boolean.TRUE.equals(data.alliesPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_MANAGE_ALLIES);
-        }
-        if (Boolean.TRUE.equals(data.kickPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_KICK_MEMBERS);
-        }
-        if (Boolean.TRUE.equals(data.enemiesPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_MANAGE_ENEMIES);
-        }
-        if (Boolean.TRUE.equals(data.openChestPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_OPEN_CHEST);
-        }
-        if (Boolean.TRUE.equals(data.openDoorPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_OPEN_DOOR);
-        }
-        if (Boolean.TRUE.equals(data.openBenchPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_OPEN_BENCH);
-        }
-        if (Boolean.TRUE.equals(data.useChairPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_USE_CHAIR);
-        }
-        if (Boolean.TRUE.equals(data.usePortalPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_USE_PORTAL);
-        }
-        if (Boolean.TRUE.equals(data.placeBlockPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_PLACE_BLOCK);
-        }
-        if (Boolean.TRUE.equals(data.breakBlockPermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_BREAK_BLOCK);
-        }
-        if (Boolean.TRUE.equals(data.setHomePermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_SET_HOME);
-        }
-        if (Boolean.TRUE.equals(data.homePermission)) {
-            selectedPermissions.add(PermissionUtil.FACTION_PERM_HOME);
-        }
-        
-        // Update permissions in FactionManager (in-memory map; periodic save persists to DB via saveAllMemberPermissions)
-        factionManager.setMemberPermissions(currentFaction.getId(), targetUuid, selectedPermissions);
-        
-        String memberName = getPlayerName(targetUuid);
-        player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.updated", memberName))
-            .color(Color.GREEN).bold(true));
-        
-        ConfigUtil.debug("Permissions saved for member: " + targetUuid);
-        
-        // Close the page
-        player.getPageManager().setPage(ref, store, Page.None);
-    }
-    
-    /**
-     * Gets player name from UUID using Universe.
-     */
-    private String getPlayerName(UUID uuid) {
-        if (uuid == null) {
-            return "Unknown";
-        }
-        
-        try {
-            Universe universe = Universe.get();
-            if (universe != null) {
-                PlayerRef playerRef = universe.getPlayer(uuid);
-                if (playerRef != null) {
-                    return playerRef.getUsername();
-                }
+
+        if (toggledPerm != null) {
+            Set<String> next = new HashSet<>(permissions);
+            if (next.contains(toggledPerm)) {
+                next.remove(toggledPerm);
+            } else {
+                next.add(toggledPerm);
             }
-        } catch (Exception e) {
-            ConfigUtil.debug("Failed to get player name for UUID " + uuid + ": " + e.getMessage());
+            factionManager.setMemberPermissions(faction.getId(), targetMemberUuid, next);
+            player.sendMessage(com.hypixel.hytale.server.core.Message.raw(I18n.get("chat.member_permissions.updated", PlayerUtils.getPlayerName(targetMemberUuid))).color(Color.GREEN));
+            refreshPage(ref, store);
         }
-        
-        return uuid.toString();
+    }
+
+    private void refreshPage(Ref<EntityStore> ref, Store<EntityStore> store) {
+        if (!ref.isValid()) return;
+        UICommandBuilder commandBuilder = new UICommandBuilder();
+        UIEventBuilder eventBuilder = new UIEventBuilder();
+        build(ref, commandBuilder, eventBuilder, store);
+        sendUpdate(commandBuilder, eventBuilder, true);
     }
 }

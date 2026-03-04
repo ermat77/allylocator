@@ -45,6 +45,10 @@ public class GlobalBreakBlockProtectionSystem extends WorldEventSystem<EntitySto
         if (worldName == null) {
             return;
         }
+        if (ProtectionService.isBlockBreakDisabledInWorld(worldName)) {
+            event.setCancelled(true);
+            return;
+        }
 
         String blockName = event.getBlockType().getId().toLowerCase(Locale.ROOT);
         if (ProtectionService.isBlockIgnored(blockName)) {

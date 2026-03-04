@@ -3,6 +3,9 @@ package com.factioncore.points;
 import com.factioncore.faction.FactionManager;
 
 import javax.annotation.Nonnull;
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -82,5 +85,17 @@ public final class FactionPointsManager {
     public int getPointsOrDefault(@Nonnull UUID factionId, int defaultValue) {
         ensureLoaded();
         return factionPoints.getOrDefault(factionId, defaultValue);
+    }
+
+    /**
+     * Returns factions sorted by points descending (highest first) for leaderboard display.
+     * Only includes factions with at least 1 point. Returns a copy; safe to iterate.
+     */
+    @Nonnull
+    public List<Map.Entry<UUID, Integer>> getRankedFactionPoints() {
+        ensureLoaded();
+        List<Map.Entry<UUID, Integer>> list = new ArrayList<>(factionPoints.entrySet());
+        list.sort(Comparator.<Map.Entry<UUID, Integer>>comparingInt(Map.Entry::getValue).reversed());
+        return list;
     }
 }

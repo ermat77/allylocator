@@ -110,6 +110,13 @@ public class BreakBlockProtectionSystem extends EntityEventSystem<EntityStore, B
         }
         
         String dimension = world.getName();
+        if (ProtectionService.isBlockBreakDisabledInWorld(dimension)) {
+            if (playerUuid == null || !PermissionUtil.canBypassProtectionAdmin(playerUuid)) {
+                ConfigUtil.debug(PREFIX + "BLOCKING break in prism attack world for player " + playerUuid);
+                event.setCancelled(true);
+                return;
+            }
+        }
         Vector3i targetBlock = event.getTargetBlock();
         int blockX = targetBlock.getX();
         int blockZ = targetBlock.getZ();

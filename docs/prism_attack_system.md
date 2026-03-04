@@ -123,7 +123,7 @@ Indexes: `idx_prism_attacks_prism_id`, `idx_prism_attacks_status`, `idx_prism_at
 
 - **Holder:** **PrismAttacksConfigHolder** (in `com.factioncore.config`) owns the config path and in-memory **PrismAttacksConfig**. Main keeps a single instance and exposes it via **getPrismAttacksConfig()**; callers use **getPrismAttacksConfig().get()** to read the config.
 - **When:** During plugin setup (in **Main.setup()**), after ClaimConfig and PrismMultiplierConfig, the holder’s **load()** and **save()** are called (each returns a **CompletableFuture**; Main calls **.join()** to wait). So the file is read (and optionally written) once at server start.
-- **Serialization:** The file is plain JSON. **Gson** is used to deserialize into **PrismAttacksConfig** (and nested **PrefabEntry**). No Hytale codec is used; the JSON keys match the Java field names (`attackerTimeSeconds`, `prefabs`, `prefabId`, `attackersBlockId`, `defendersBlockId`).
+- **Serialization:** The file is plain JSON. **Gson** is used to deserialize into **PrismAttacksConfig** (and nested **PrefabEntry**, **PositionEntry**). No Hytale codec is used; the JSON keys match the Java field names (`attackerTimeSeconds`, `prefabs`, `prefabId`, `attackersPositions`, `defendersPositions`, `attackersBlockId`, `defendersBlockId`).
 - **If the file does not exist:** The holder creates it. It sets in-memory config to default values (**attackerTimeSeconds** 60, one **PrefabEntry** with the default prefab and block IDs), ensures the plugin data directory exists (**Files.createDirectories** on the parent path), then writes the default config as JSON to **prism_attacks.json**. No manual creation is required.
 - **If load or save fails:** The holder sets in-memory config to a default instance and throws. Main catches the exception, logs **"Failed to load/save PrismAttacksConfig: …"** (with cause), and continues; the plugin uses the in-memory defaults until the next successful load.
 - **Saving:** **save()** writes the current in-memory config back to **prism_attacks.json** (e.g. after load to create or overwrite the file). Both load and save run on a single-threaded IO executor to avoid concurrent file access.
@@ -134,10 +134,12 @@ Indexes: `idx_prism_attacks_prism_id`, `idx_prism_attacks_status`, `idx_prism_at
 - **timeBeforeAutoDestruction** (int, default 600): Seconds after attack start before the attack world is **auto-removed** and resolution runs (attackers win, participants teleported back, prism removed). This is independent of the join window.
 - **prefabs** (array of objects): Each entry has:
   - **prefabId** (string): Server prefab key (e.g. `prefab_prism.prefab.json`). One prefab is chosen at random per attack. Resolved via **PrefabStore.get().getServerPrefab(prefabKey)** when pasting the arena.
-  - **attackersBlockId** (string): Block type ID for attacker spawn blocks (e.g. red crystal).
-  - **defendersBlockId** (string): Block type ID for defender spawn blocks (e.g. blue crystal).
+  - **attackersPositions** (array of `{ "x", "y", "z" }`): Optional. Explicit coordinates for attacker spawns. One position is randomly chosen per joining attacker. If missing or empty, **attackersBlockId** is used as fallback (prefab is scanned for matching blocks).
+  - **defendersPositions** (array of `{ "x", "y", "z" }`): Optional. Explicit coordinates for defender spawns. One position is randomly chosen per joining defender. If missing or empty, **defendersBlockId** is used as fallback.
+  - **attackersBlockId** (string): Block type ID for attacker spawn blocks. Used only when **attackersPositions** is missing or empty (fallback: scan prefab for this block).
+  - **defendersBlockId** (string): Block type ID for defender spawn blocks. Used only when **defendersPositions** is missing or empty (fallback).
 
-Example:
+Example (config-based positions):
 
 ```json
 {
@@ -145,15 +147,15 @@ Example:
   "timeBeforeAutoDestruction": 600,
   "prefabs": [
     {
-      "prefabId": "prefab_prism.prefab.json",
-      "attackersBlockId": "com.factioncore:Red_Crystal",
-      "defendersBlockId": "com.factioncore:Blue_Crystal"
+      "prefabId": "spawn_alan_prism.prefab.json",
+      "attackersPositions": [{ "x": 0, "y": 1, "z": 0 }, { "x": 1, "y": 1, "z": 0 }, { "x": 2, "y": 1, "z": 0 }],
+      "defendersPositions": [{ "x": 0, "y": 2, "z": 0 }, { "x": 1, "y": 2, "z": 0 }, { "x": 2, "y": 2, "z": 0 }]
     }
   ]
 }
 ```
 
-Spawn positions are derived by scanning the prefab (before pasting) for blocks matching **attackersBlockId** and **defendersBlockId**; their coordinates are stored in the attack row. If a block ID cannot be resolved or no matching blocks are found, placeholder lists (e.g. `0,1,0;1,1,0` for attackers, `0,2,0;1,2,0` for defenders) are used as fallback. When an attacker or defender joins, they are assigned a **random** free position from the role’s list; that position is persisted in `prism_attack_participants`, so the next joiner gets another random free slot.
+Spawn positions are taken from **attackersPositions** and **defendersPositions** when both are non-empty for the chosen prefab; otherwise the prefab is scanned for blocks matching **attackersBlockId** and **defendersBlockId** (fallback). If the fallback yields no blocks (or positions are still empty), placeholder lists (e.g. `0,1,0;1,1,0` for attackers, `0,2,0;1,2,0` for defenders) are used. When an attacker or defender joins, they are assigned a **random** free position from the role’s list; that position is persisted in `prism_attack_participants`, so the next joiner gets another random free slot.
 
 ---
 
@@ -161,7 +163,7 @@ Spawn positions are derived by scanning the prefab (before pasting) for blocks m
 
 | Class / File | Role |
 |--------------|------|
-| **PrismAttacksConfig** | POJO for prism attack settings: attackerTimeSeconds (join window), timeBeforeAutoDestruction (world removal), list of PrefabEntry (prefabId, attackersBlockId, defendersBlockId). Serialized/deserialized by Gson. |
+| **PrismAttacksConfig** | POJO for prism attack settings: attackerTimeSeconds (join window), timeBeforeAutoDestruction (world removal), list of PrefabEntry (prefabId, attackersPositions, defendersPositions; optional attackersBlockId/defendersBlockId for fallback). Serialized/deserialized by Gson. |
 | **PrismAttacksConfigHolder** | Loads and saves prism_attacks.json with Gson. get() returns current config; load()/save() run on IO executor. Creates file with defaults if missing. |
 | **PrismAttackService** | Cache of active attacks (by prism id and attack id). startAttack (create world, paste prefab, insert attack, dispatch event). assignParticipantSlot (with return position), updateAttackStatusToActive. Two timers: combat start (status → in_progress, clear HUD) and destruction (resolveAttackAttackersWin: teleport participants back, remove prism, remove world). Startup recovery (load PENDING_START/ACTIVE/in_progress, CANCELLED if world missing, reschedule combat start and/or destruction). |
 | **PlayerJoinPrismAttackEvent** | Payload: playerRef, ref, store, prismId, role ("attacker" / "defender"). |

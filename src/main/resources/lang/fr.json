@@ -217,6 +217,7 @@
   "ui.faction_show.button_claim": "CLAIM",
   "ui.faction_show.button_create_faction": "CRÉER UNE FACTION",
   "ui.faction_show.button_settings": "PARAMÈTRES",
+  "ui.faction_show.button_leaderboard": "Classement",
   "ui.faction_show.button_prism": "Prisme",
   "ui.faction_show.button_close": "FERMER",
   "ui.faction_show.role_owner": "Propriétaire : ",
@@ -231,6 +232,11 @@
   "ui.faction_prisms.back": "Retour",
   "ui.faction_prisms.close": "Fermer",
   "ui.faction_prisms.multiplier": "Multiplicateur : {0}",
+
+  "ui.faction_leaderboard.title": "Classement",
+  "ui.faction_leaderboard.back": "Retour",
+  "ui.faction_leaderboard.close": "Fermer",
+  "ui.faction_leaderboard.no_factions": "Aucune faction avec des points pour l'instant.",
 
   "ui.prism_attack.no_prism": "Aucun prisme sélectionné.",
   "ui.prism_attack.attack_not_found": "Attaque introuvable ou déjà terminée.",
@@ -305,6 +311,7 @@
   "ui.member_permissions.enemies": "Gérer les ennemis",
   "ui.member_permissions.save": "Enregistrer",
   "ui.member_permissions.cancel": "Annuler",
+  "ui.member_permissions.back": "RETOUR",
   "ui.member_permissions.set_home": "Définir le foyer de la faction",
   "ui.member_permissions.home": "Utiliser le foyer de la faction",
 

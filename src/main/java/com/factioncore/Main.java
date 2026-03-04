@@ -299,6 +299,7 @@ public class Main extends JavaPlugin {
             com.factioncore.prism.PrismAttackService.getInstance().initializeAsync().join();
             com.factioncore.prism.PrismAttackEventDispatcher.getInstance().addHandler(com.factioncore.prism.PrismAttackEventHandlerImpl.getInstance());
             com.factioncore.prism.PrismAttackHudHelper.startHudTicker();
+            com.factioncore.prism.PrismPreparingMovementFilter.register();
             getLogger().at(Level.INFO).log("PrismAttackService and event handler registered");
 
             com.factioncore.points.FactionPointsManager.getInstance().initializeAsync();

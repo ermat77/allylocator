@@ -9,10 +9,11 @@ import java.util.UUID;
  * Event data for FactionShowPage interactions.
  */
 public class FactionShowPageEventData {
-    public String action; // "settings", "close", "permissions", "cancelInvite", "createFaction"
+    public String action; // "settings", "close", "permissions", "cancelInvite", "createFaction", "accept", "refuse"
     public UUID memberUuid; // For permissions button
     public UUID invitedPlayerUuid; // For cancel invite button
     public String factionName; // For create faction button
+    public UUID factionId; // For accept/refuse invite (player's pending invites)
 
     public static final BuilderCodec<FactionShowPageEventData> CODEC = BuilderCodec.builder(
         FactionShowPageEventData.class,
@@ -52,6 +53,18 @@ public class FactionShowPageEventData {
         new KeyedCodec<>("@FactionName", Codec.STRING),
         (FactionShowPageEventData o, String v) -> o.factionName = v,
         (FactionShowPageEventData o) -> o.factionName
+    )
+    .add()
+    .append(
+        new KeyedCodec<>("FactionId", Codec.STRING),
+        (FactionShowPageEventData o, String v) -> {
+            try {
+                o.factionId = v != null ? UUID.fromString(v) : null;
+            } catch (IllegalArgumentException e) {
+                o.factionId = null;
+            }
+        },
+        (FactionShowPageEventData o) -> o.factionId != null ? o.factionId.toString() : null
     )
     .add()
     .build();

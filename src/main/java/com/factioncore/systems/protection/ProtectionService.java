@@ -9,6 +9,7 @@ import com.factioncore.diplomacy.AllySettings;
 import com.factioncore.faction.FactionInfo;
 import com.factioncore.faction.FactionManager;
 import com.factioncore.util.ConfigUtil;
+import com.factioncore.prism.PrismAttackService;
 import com.factioncore.util.PermissionUtil;
 
 /**
@@ -297,5 +298,27 @@ public class ProtectionService {
             }
         }
         return false;
+    }
+
+    /**
+     * Returns true if block breaking is disabled in the given world (e.g. prism attack worlds).
+     * When true, break/damage protection systems should cancel break events in that world.
+     *
+     * @param worldName World name (dimension name)
+     * @return true if block break is disabled in this world
+     */
+    public static boolean isBlockBreakDisabledInWorld(String worldName) {
+        return PrismAttackService.isAttackWorldName(worldName);
+    }
+
+    /**
+     * Returns true if block placing is disabled in the given world (e.g. prism attack worlds).
+     * When true, place block protection system should cancel place events in that world.
+     *
+     * @param worldName World name (dimension name)
+     * @return true if block place is disabled in this world
+     */
+    public static boolean isBlockPlaceDisabledInWorld(String worldName) {
+        return PrismAttackService.isAttackWorldName(worldName);
     }
 }
