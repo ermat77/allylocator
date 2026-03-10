@@ -53,11 +53,13 @@ public final class PrismAttackHudTickingSystem extends EntityTickingSystem<Entit
             log(Level.FINE, "PrismAttackHud: no active attack for world %s (player %s) - see PrismAttackService getActiveAttackByWorldName log for cache", worldName, playerRef.getUuid());
             return;
         }
+        if (!"PREPARING".equals(attack.getStatus())) {
+            return;
+        }
 
-        // Countdown is shown by PrismAttackHudHelper (PlayerReadyEvent) and PrismAttackHudTicker (EventTitleUtil), not MultipleHUD
-        log(Level.FINE, "PrismAttackHud: player %s in PREPARING world %s (title shown by ticker)", playerRef.getUuid(), worldName);
-        // MultipleHUD (commented out): CustomUIHud hud = new PrismAttackTimerHud(playerRef, attack.getEndsAtMs());
-        // MultipleHudBridge.setCustomHud(player, playerRef, hud);
+        // Show countdown from wall-clock so late joiners see correct remaining seconds on first tick.
+        PrismAttackHudTicker.showCountdownForPlayerIfChanged(playerRef, attack);
+        log(Level.FINE, "PrismAttackHud: player %s in PREPARING world %s (title shown by ticker if changed)", playerRef.getUuid(), worldName);
     }
 
     private static void log(Level level, String format, Object... args) {

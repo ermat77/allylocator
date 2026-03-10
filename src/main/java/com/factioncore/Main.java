@@ -15,6 +15,8 @@ import com.factioncore.systems.protection.DamageBlockProtectionSystem;
 import com.factioncore.systems.protection.GlobalBreakBlockProtectionSystem;
 import com.factioncore.systems.protection.GlobalDamageBlockProtectionSystem;
 import com.factioncore.systems.protection.PlaceBlockProtectionSystem;
+import com.factioncore.systems.protection.PrismAttackDeathResolutionSystem;
+import com.factioncore.systems.protection.PrismAttackEntityDamageProtectionSystem;
 import com.factioncore.systems.protection.UseBlockProtectionSystem;
 import com.factioncore.systems.interaction.BlockUseOpenUISystem;
 import com.factioncore.systems.interaction.PrismBlockPlacerClearSystem;
@@ -373,6 +375,11 @@ public class Main extends JavaPlugin {
             // Global (world-level) break/damage protection: explosions and non-player breaks (SimpleClaims-style)
             getEntityStoreRegistry().registerSystem((ISystem) new GlobalDamageBlockProtectionSystem());
             getEntityStoreRegistry().registerSystem((ISystem) new GlobalBreakBlockProtectionSystem());
+
+            getEntityStoreRegistry().registerSystem((ISystem) new PrismAttackEntityDamageProtectionSystem());
+            ConfigUtil.debug("PrismAttackEntityDamageProtectionSystem registered");
+            getEntityStoreRegistry().registerSystem((ISystem) new PrismAttackDeathResolutionSystem());
+            ConfigUtil.debug("PrismAttackDeathResolutionSystem registered");
 
             // Tick systems (SimpleClaims-style: title, chunk border particles)
             getEntityStoreRegistry().registerSystem((ISystem) new TitleTickingSystem());

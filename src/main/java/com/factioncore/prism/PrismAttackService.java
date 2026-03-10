@@ -11,7 +11,6 @@ import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.math.vector.Vector2d;
 import com.hypixel.hytale.math.vector.Vector3i;
-import com.hypixel.hytale.server.core.asset.type.blocktype.config.BlockType;
 import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.prefab.PrefabStore;
 import com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection;
@@ -27,7 +26,6 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
-import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -52,6 +50,8 @@ public final class PrismAttackService {
     private final Map<UUID, PrismAttackRecord> attackIdToRecord = new ConcurrentHashMap<>();
     /** (attackId + "|" + playerUuid) -> spawn [x,y,z] for PREPARING teleport-back. */
     private final Map<String, int[]> participantSpawnCache = new ConcurrentHashMap<>();
+    /** attack_id -> (attacker player_uuid -> hasDied). Populated when status becomes IN_PROGRESS; cleared when attack is resolved. */
+    private final Map<UUID, Map<UUID, Boolean>> attackIdToAttackerDeathMap = new ConcurrentHashMap<>();
 
     private static final String ATTACK_WORLD_PREFIX = "prism-attack-";
     private static final ScheduledExecutorService timerScheduler = Executors.newSingleThreadScheduledExecutor(r -> {
@@ -79,6 +79,7 @@ public final class PrismAttackService {
         }
         prismIdToAttack.clear();
         attackIdToRecord.clear();
+        attackIdToAttackerDeathMap.clear();
         DatabaseManager db = FactionManager.getInstance().getDatabaseManager();
         initializationFuture = PrismManager.getInstance().initializeAsync()
                 .thenCompose(v -> db.loadPrismAttacksActiveAsync())
@@ -136,15 +137,31 @@ public final class PrismAttackService {
     }
 
     private void scheduleDestruction(@Nonnull UUID attackId, long delayMs) {
-        timerScheduler.schedule(() -> resolveAttackAttackersWin(attackId), delayMs, TimeUnit.MILLISECONDS);
+        timerScheduler.schedule(() -> resolveAttackDefendersWin(attackId), delayMs, TimeUnit.MILLISECONDS);
     }
 
     /**
-     * Called when the join window ends: update status to IN_PROGRESS and clear HUD for participants.
+     * Called when the join window ends: update status to IN_PROGRESS, build attacker death map, and clear HUD for participants.
      */
     private void onCombatStart(@Nonnull UUID attackId) {
         PrismAttackRecord r = attackIdToRecord.get(attackId);
         if (r == null) return;
+        List<PrismAttackParticipantRecord> participants;
+        try {
+            participants = FactionManager.getInstance().getDatabaseManager()
+                    .loadPrismAttackParticipantsForAttacksAsync(Collections.singletonList(attackId)).get();
+        } catch (Exception e) {
+            ConfigUtil.debug("[PrismAttackService] onCombatStart load participants failed: " + e.getMessage());
+            return;
+        }
+        Map<UUID, Boolean> attackerDeathMap = new ConcurrentHashMap<>();
+        for (PrismAttackParticipantRecord p : participants) {
+            if ("attacker".equalsIgnoreCase(p.getRole())) {
+                attackerDeathMap.put(p.getPlayerUuid(), Boolean.FALSE);
+            }
+        }
+        attackIdToAttackerDeathMap.put(attackId, attackerDeathMap);
+
         FactionManager.getInstance().getDatabaseManager().updatePrismAttackStatus(attackId, "IN_PROGRESS");
         PrismAttackRecord updated = new PrismAttackRecord(r.getAttackId(), r.getPrismId(), r.getAttackWorldName(),
                 r.getDefenderFactionId(), r.getAttackerFactionId(), "IN_PROGRESS", r.getStartedAtMs(), r.getEndsAtMs(), r.getDestructionAtMs(),
@@ -184,39 +201,7 @@ public final class PrismAttackService {
         }
         FactionManager.getInstance().getDatabaseManager()
                 .loadPrismAttackParticipantsForAttacksAsync(Collections.singletonList(attackId))
-                .thenAccept(participants -> {
-                    for (PrismAttackParticipantRecord p : participants) {
-                        if (p.getReturnWorldName() == null || p.getReturnWorldName().isEmpty()) continue;
-                    World returnWorld = Universe.get().getWorld(p.getReturnWorldName());
-                        if (returnWorld == null) continue;
-                        Transform returnTransform = new Transform(p.getReturnX(), p.getReturnY(), p.getReturnZ());
-                        UUID playerUuid = p.getPlayerUuid();
-                        attackWorld.execute(() -> {
-                            java.util.Collection<PlayerRef> refs = attackWorld.getPlayerRefs();
-                            if (refs == null) return;
-                            for (PlayerRef pr : refs) {
-                                if (pr != null && playerUuid.equals(pr.getUuid())) {
-                                    Ref<EntityStore> ref = pr.getReference();
-                                    if (ref != null && ref.isValid()) {
-                                        Store<EntityStore> store = attackWorld.getEntityStore().getStore();
-                                        if (store != null) {
-                                            Teleport teleport = Teleport.createForPlayer(returnWorld, returnTransform);
-                                            store.addComponent(ref, Teleport.getComponentType(), teleport);
-                                        }
-                                    }
-                                    break;
-                                }
-                            }
-                        });
-                    }
-                    timerScheduler.schedule(() -> {
-                        try {
-                            Universe.get().removeWorld(attackWorldName);
-                        } catch (Exception e) {
-                            ConfigUtil.debug("[PrismAttackService] removeWorld failed: " + e.getMessage());
-                        }
-                    }, 1, TimeUnit.SECONDS);
-                })
+                .thenAccept(participants -> teleportParticipantsBackAndRemoveWorld(attackWorld, attackId, attackWorldName, participants))
                 .exceptionally(throwable -> {
                     ConfigUtil.debug("[PrismAttackService] load participants for teleport-back failed: " + throwable.getMessage());
                     try {
@@ -226,6 +211,75 @@ public final class PrismAttackService {
                     }
                     return null;
                 });
+    }
+
+    /**
+     * Resolves attack as defenders win: teleport participants back, update DB, remove attack world.
+     * Does not remove the prism or award points to attackers.
+     */
+    public void resolveAttackDefendersWin(@Nonnull UUID attackId) {
+        PrismAttackRecord attack = attackIdToRecord.get(attackId);
+        if (attack == null) return;
+        removeAttackFromCache(attackId);
+        FactionManager.getInstance().getDatabaseManager().updatePrismAttackStatus(attackId, "RESOLVED_DEFENDERS_WIN");
+
+        String attackWorldName = attack.getAttackWorldName();
+        World attackWorld = Universe.get().getWorld(attackWorldName);
+        if (attackWorld == null) {
+            return;
+        }
+        FactionManager.getInstance().getDatabaseManager()
+                .loadPrismAttackParticipantsForAttacksAsync(Collections.singletonList(attackId))
+                .thenAccept(participants -> teleportParticipantsBackAndRemoveWorld(attackWorld, attackId, attackWorldName, participants))
+                .exceptionally(throwable -> {
+                    ConfigUtil.debug("[PrismAttackService] load participants for teleport-back failed: " + throwable.getMessage());
+                    try {
+                        Universe.get().removeWorld(attackWorldName);
+                    } catch (Exception e) {
+                        ConfigUtil.debug("[PrismAttackService] removeWorld failed: " + e.getMessage());
+                    }
+                    return null;
+                });
+    }
+
+    /**
+     * Teleports all participants with a return position back to their world, then schedules attack world removal.
+     * Shared by resolveAttackAttackersWin and resolveAttackDefendersWin.
+     */
+    private void teleportParticipantsBackAndRemoveWorld(@Nonnull World attackWorld, @Nonnull UUID attackId,
+                                                        @Nonnull String attackWorldName,
+                                                        @Nonnull List<PrismAttackParticipantRecord> participants) {
+        for (PrismAttackParticipantRecord p : participants) {
+            if (p.getReturnWorldName() == null || p.getReturnWorldName().isEmpty()) continue;
+            World returnWorld = Universe.get().getWorld(p.getReturnWorldName());
+            if (returnWorld == null) continue;
+            Transform returnTransform = new Transform(p.getReturnX(), p.getReturnY(), p.getReturnZ());
+            UUID playerUuid = p.getPlayerUuid();
+            attackWorld.execute(() -> {
+                java.util.Collection<PlayerRef> refs = attackWorld.getPlayerRefs();
+                if (refs == null) return;
+                for (PlayerRef pr : refs) {
+                    if (pr != null && playerUuid.equals(pr.getUuid())) {
+                        Ref<EntityStore> ref = pr.getReference();
+                        if (ref != null && ref.isValid()) {
+                            Store<EntityStore> store = attackWorld.getEntityStore().getStore();
+                            if (store != null) {
+                                Teleport teleport = Teleport.createForPlayer(returnWorld, returnTransform);
+                                store.addComponent(ref, Teleport.getComponentType(), teleport);
+                            }
+                        }
+                        break;
+                    }
+                }
+            });
+        }
+        timerScheduler.schedule(() -> {
+            try {
+                Universe.get().removeWorld(attackWorldName);
+            } catch (Exception e) {
+                ConfigUtil.debug("[PrismAttackService] removeWorld failed: " + e.getMessage());
+            }
+        }, 1, TimeUnit.SECONDS);
     }
 
     /**
@@ -247,8 +301,23 @@ public final class PrismAttackService {
         if (removed != null) {
             prismIdToAttack.remove(removed.getPrismId());
         }
+        attackIdToAttackerDeathMap.remove(attackId);
         String prefix = attackId.toString() + "|";
         participantSpawnCache.keySet().removeIf(key -> key.startsWith(prefix));
+    }
+
+    /**
+     * Marks the given player as dead for the attack's attacker map. Call when an attacker gains DeathComponent.
+     * @return true if this player was an attacker and now all attackers for this attack have died (defenders win).
+     */
+    public boolean markAttackerDeadAndCheckAllDead(@Nonnull UUID attackId, @Nonnull UUID playerUuid) {
+        Map<UUID, Boolean> map = attackIdToAttackerDeathMap.get(attackId);
+        if (map == null || !map.containsKey(playerUuid)) return false;
+        map.put(playerUuid, Boolean.TRUE);
+        for (Boolean hasDied : map.values()) {
+            if (!Boolean.TRUE.equals(hasDied)) return false;
+        }
+        return true;
     }
 
     /**
@@ -335,6 +404,21 @@ public final class PrismAttackService {
                 }
                 log(Level.INFO, "[PrismAttackService] getActiveAttackByWorldName(null): worldName=%s cache=[%s]",
                         worldName, cacheSnapshot.length() > 0 ? cacheSnapshot.toString() : "empty");
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Returns the attack whose attack world name equals the given world name, or null if none.
+     * Does not filter by status; use this to check attack status (e.g. IN_PROGRESS) for damage gating.
+     */
+    @Nullable
+    public PrismAttackRecord getAttackRecordByWorldName(@Nullable String worldName) {
+        if (worldName == null) return null;
+        for (PrismAttackRecord r : attackIdToRecord.values()) {
+            if (worldName.equals(r.getAttackWorldName())) {
+                return r;
             }
         }
         return null;
@@ -497,8 +581,6 @@ public final class PrismAttackService {
         List<PrismAttacksConfig.PrefabEntry> prefabs = config.getPrefabs();
         PrismAttacksConfig.PrefabEntry chosen = prefabs.get(new Random().nextInt(prefabs.size()));
         String prefabId = chosen.getPrefabId();
-        String attackersBlockId = chosen.getAttackersBlockId();
-        String defendersBlockId = chosen.getDefendersBlockId();
 
         Path universePath = Universe.get().getPath();
         Path savePath = universePath.resolve("worlds").resolve(attackWorldName);
@@ -542,15 +624,15 @@ public final class PrismAttackService {
                 }
                 List<int[]> attackerPositions = new ArrayList<>();
                 List<int[]> defenderPositions = new ArrayList<>();
-                if (!chosen.getAttackersPositions().isEmpty() && !chosen.getDefendersPositions().isEmpty()) {
+                if (!chosen.getAttackersPositions().isEmpty()) {
                     for (PrismAttacksConfig.PositionEntry p : chosen.getAttackersPositions()) {
                         attackerPositions.add(new int[] { p.getX(), p.getY(), p.getZ() });
                     }
+                }
+                if (!chosen.getDefendersPositions().isEmpty()) {
                     for (PrismAttacksConfig.PositionEntry p : chosen.getDefendersPositions()) {
                         defenderPositions.add(new int[] { p.getX(), p.getY(), p.getZ() });
                     }
-                } else {
-                    collectSpawnPositionsFromPrefab(selection, attackersBlockId, defendersBlockId, attackerPositions, defenderPositions);
                 }
                 if (attackerPositions.isEmpty()) {
                     attackerPositions = Arrays.asList(new int[] { 0, 1, 0 }, new int[] { 1, 1, 0 });
@@ -571,7 +653,7 @@ public final class PrismAttackService {
 
                 PrismAttackRecord attack = new PrismAttackRecord(attackId, prismId, attackWorldName,
                         prism.getFactionId(), playerFaction.getId(), "PENDING_START", nowMs, endsAtMs, destructionAtMs,
-                        prefabId, attackersBlockId, defendersBlockId, defenderPositionsJson, attackerPositionsJson);
+                        prefabId, null, null, defenderPositionsJson, attackerPositionsJson);
                 FactionManager.getInstance().getDatabaseManager().insertPrismAttack(attack);
                 addAttackToCache(attack);
                 // Combat start and destruction are scheduled when handler calls updateAttackStatusToActive (first attacker)
@@ -607,64 +689,6 @@ public final class PrismAttackService {
     private static CompletableFuture<World> waitForChunkAt(World world, int blockX, int blockZ) {
         long chunkIndex = ChunkUtil.indexChunkFromBlock(blockX, blockZ);
         return world.getChunkStore().getChunkReferenceAsync(chunkIndex).thenApply(ref -> world);
-    }
-
-    /**
-     * Resolves a BlockType to the numeric block ID used in prefab block data (e.g. block.blockId()).
-     * Tries getBlockId() or getAssetIndex() via reflection; otherwise iterates the asset map to find the int key. Returns -1 if not found.
-     */
-    private static int resolveBlockTypeToNumericId(@Nonnull Object assetMap, @Nonnull BlockType blockType) {
-        try {
-            for (String methodName : new String[] { "getBlockId", "getAssetIndex" }) {
-                Method m = BlockType.class.getMethod(methodName);
-                Object result = m.invoke(blockType);
-                if (result instanceof Number) return ((Number) result).intValue();
-            }
-        } catch (Exception ignored) {
-        }
-        try {
-            Method getKeys = assetMap.getClass().getMethod("getKeys");
-            Iterable<?> keys = (Iterable<?>) getKeys.invoke(assetMap);
-            Method getAsset = assetMap.getClass().getMethod("getAsset", Object.class);
-            for (Object key : keys) {
-                if (key instanceof Number && blockType.equals(getAsset.invoke(assetMap, key))) {
-                    return ((Number) key).intValue();
-                }
-            }
-        } catch (Exception ignored) {
-        }
-        return -1;
-    }
-
-    /**
-     * Scans the prefab selection for blocks matching attackersBlockId and defendersBlockId (config strings).
-     * Fills attackerOut and defenderOut with [x,y,z] coordinates (local = world when pasted at origin).
-     * If a block ID cannot be resolved or no blocks match, the corresponding list is left empty (caller applies fallback).
-     */
-    private static void collectSpawnPositionsFromPrefab(@Nonnull BlockSelection selection,
-                                                        @Nullable String attackersBlockId,
-                                                        @Nullable String defendersBlockId,
-                                                        @Nonnull List<int[]> attackerOut,
-                                                        @Nonnull List<int[]> defenderOut) {
-        int attackerBid = -1;
-        int defenderBid = -1;
-        if (attackersBlockId != null && !attackersBlockId.isEmpty()) {
-            BlockType at = BlockType.getAssetMap().getAsset(attackersBlockId);
-            if (at != null) attackerBid = resolveBlockTypeToNumericId(BlockType.getAssetMap(), at);
-            else ConfigUtil.debug("[PrismAttackService] attackersBlockId not found: " + attackersBlockId);
-        }
-        if (defendersBlockId != null && !defendersBlockId.isEmpty()) {
-            BlockType dt = BlockType.getAssetMap().getAsset(defendersBlockId);
-            if (dt != null) defenderBid = resolveBlockTypeToNumericId(BlockType.getAssetMap(), dt);
-            else ConfigUtil.debug("[PrismAttackService] defendersBlockId not found: " + defendersBlockId);
-        }
-        final int finalAttackerBid = attackerBid;
-        final int finalDefenderBid = defenderBid;
-        selection.forEachBlock((x, y, z, block) -> {
-            int bid = block.blockId();
-            if (bid == finalAttackerBid) attackerOut.add(new int[] { x, y, z });
-            if (bid == finalDefenderBid) defenderOut.add(new int[] { x, y, z });
-        });
     }
 
     private static void pastePrefabAtOrigin(World world, String prefabKey) {

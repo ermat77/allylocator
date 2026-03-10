@@ -20,7 +20,7 @@ import java.util.concurrent.Executors;
  *   "attackerTimeSeconds": 60,
  *   "timeBeforeAutoDestruction": 600,
  *   "prefabs": [
- *     { "prefabId": "...", "attackersBlockId": "...", "defendersBlockId": "..." }
+ *     { "prefabId": "...", "attackersPositions": [{ "x", "y", "z" }, ...], "defendersPositions": [...] }
  *   ]
  * }
  * </pre>

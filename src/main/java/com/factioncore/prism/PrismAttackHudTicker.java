@@ -23,7 +23,8 @@ import java.util.logging.Level;
 
 /**
  * Ticks prism attack countdown for players in PREPARING attacks. Uses EventTitleUtil (Hytale API, like delaytp).
- * Shows title at most once per integer second. Clears display state when combat starts or attack ends.
+ * When remaining > 10s, shows only at multiples of 10 (e.g. 120, 110, ..., 20); when 1–10s left, shows every second (10 down to 1).
+ * Clears display state when combat starts or attack ends.
  */
 public final class PrismAttackHudTicker {
 
@@ -54,6 +55,37 @@ public final class PrismAttackHudTicker {
         // MultipleHUD (commented out): was calling MultipleHudBridge.hideCustomHud for each participant
     }
 
+    /**
+     * True when we should show the HUD at this remaining second: multiples of 10 when > 10s, or every second when 1–10s.
+     */
+    private static boolean shouldShowCountdownAtSecond(int seconds) {
+        return seconds >= 1 && (seconds <= 10 || seconds % 10 == 0);
+    }
+
+    /**
+     * Shows the countdown title to the player if the integer second has changed (or never shown).
+     * Uses wall-clock remaining time from attack.getEndsAtMs(). Call from the world thread.
+     * Used by the scheduled ticker, the entity ticking system, and the PlayerReadyEvent helper.
+     * Display schedule: only at multiples of 10 when > 10s left (e.g. 120, 110, ..., 20), then every second for 10, 9, ..., 1.
+     */
+    public static boolean showCountdownForPlayerIfChanged(@Nonnull PlayerRef playerRef, @Nonnull PrismAttackRecord attack) {
+        long now = System.currentTimeMillis();
+        long remainingMs = attack.getEndsAtMs() - now;
+        int seconds = (int) Math.max(0, (remainingMs + 999) / 1000);
+        UUID playerUuid = playerRef.getUuid();
+        Integer lastShown = lastShownSecondPerPlayer.get(playerUuid);
+        if (shouldShowCountdownAtSecond(seconds) && (lastShown == null || !lastShown.equals(seconds))) {
+            lastShownSecondPerPlayer.put(playerUuid, seconds);
+            String message = I18n.get("ui.prism_attack.timer_seconds", String.valueOf(seconds));
+            if (message == null || message.isEmpty()) message = seconds + " seconds before the attack starts";
+            Message title = Message.raw(message).color(Color.WHITE);
+            Message sub = Message.raw("").color(Color.GRAY);
+            EventTitleUtil.showEventTitleToPlayer(playerRef, title, sub, false, null, 0.5f, 0.1f, 0.1f);
+            return true;
+        }
+        return false;
+    }
+
     private static void tick() {
         List<PrismAttackRecord> attacks = PrismAttackService.getInstance().getActiveAttacksForHud();
         if (attacks.isEmpty()) return;
@@ -72,7 +104,6 @@ public final class PrismAttackHudTicker {
                     log(Level.FINE, "PrismAttackHudTicker: attack %s has no participants", attack.getAttackId());
                     continue;
                 }
-                final long endsAtMs = attack.getEndsAtMs();
                 final UUID attackIdForLog = attack.getAttackId();
                 final int participantCount = participants.size();
                 world.execute(() -> {
@@ -82,21 +113,11 @@ public final class PrismAttackHudTicker {
                         return;
                     }
                     int shown = 0;
-                    long now = System.currentTimeMillis();
-                    long remainingMs = endsAtMs - now;
-                    int seconds = (int) Math.max(0, (remainingMs + 999) / 1000);
                     for (PrismAttackParticipantRecord p : participants) {
                         UUID playerUuid = p.getPlayerUuid();
                         for (PlayerRef pr : refs) {
-                                if (pr != null && playerUuid.equals(pr.getUuid())) {
-                                Integer lastShown = lastShownSecondPerPlayer.get(playerUuid);
-                                if (seconds >= 1 && (lastShown == null || !lastShown.equals(seconds))) {
-                                    lastShownSecondPerPlayer.put(playerUuid, seconds);
-                                    String message = I18n.get("ui.prism_attack.timer_seconds", String.valueOf(seconds));
-                                    if (message == null || message.isEmpty()) message = seconds + " seconds before the attack starts";
-                                    Message title = Message.raw(message).color(Color.WHITE);
-                                    Message sub = Message.raw("").color(Color.GRAY);
-                                    EventTitleUtil.showEventTitleToPlayer(pr, title, sub, false, null, 0.5f, 0.1f, 0.1f);
+                            if (pr != null && playerUuid.equals(pr.getUuid())) {
+                                if (showCountdownForPlayerIfChanged(pr, attack)) {
                                     shown++;
                                 }
                                 break;

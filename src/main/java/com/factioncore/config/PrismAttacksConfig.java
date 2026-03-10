@@ -17,8 +17,7 @@ import java.util.List;
  *   ]
  * }
  * </pre>
- * If attackersPositions/defendersPositions are missing or empty, block IDs (attackersBlockId, defendersBlockId)
- * are used as fallback to scan the prefab for spawn positions.
+ * Spawn positions come only from attackersPositions and defendersPositions; if either is missing or empty, a hardcoded fallback list is used.
  *
  * <p>Prefab IDs are resolved via the server's {@link com.hypixel.hytale.server.core.prefab.PrefabStore}:
  * each prefabId is a server prefab key (e.g. {@code prefab_prism.prefab.json}) looked up with
@@ -39,7 +38,7 @@ public class PrismAttacksConfig {
         List<PositionEntry> defaultDefenders = new ArrayList<>();
         defaultDefenders.add(new PositionEntry(0, 2, 0));
         defaultDefenders.add(new PositionEntry(1, 2, 0));
-        list.add(new PrefabEntry("prefab_prism.prefab.json", "com.factioncore:Red_Crystal", "com.factioncore:Blue_Crystal", defaultAttackers, defaultDefenders));
+        list.add(new PrefabEntry("prefab_prism.prefab.json", defaultAttackers, defaultDefenders));
         return list;
     }
 
@@ -62,7 +61,7 @@ public class PrismAttacksConfig {
     }
 
     /**
-     * Returns the list of prefab entries (prefab id, attackers block id, defenders block id).
+     * Returns the list of prefab entries (prefab id and spawn position lists).
      */
     @Nonnull
     public List<PrefabEntry> getPrefabs() {
@@ -94,43 +93,30 @@ public class PrismAttacksConfig {
     }
 
     /**
-     * One prefab entry: server prefab key, optional block ids (fallback), and optional spawn position lists.
+     * One prefab entry: server prefab key and spawn position lists. Spawn positions come only from these lists.
      */
     public static final class PrefabEntry {
         private String prefabId = "prefab_prism.prefab.json";
-        private String attackersBlockId = "com.factioncore:Red_Crystal";
-        private String defendersBlockId = "com.factioncore:Blue_Crystal";
         private List<PositionEntry> attackersPositions;
         private List<PositionEntry> defendersPositions;
 
         public PrefabEntry() {}
 
-        public PrefabEntry(String prefabId, String attackersBlockId, String defendersBlockId) {
+        public PrefabEntry(String prefabId, List<PositionEntry> attackersPositions, List<PositionEntry> defendersPositions) {
             this.prefabId = prefabId != null ? prefabId : "";
-            this.attackersBlockId = attackersBlockId != null ? attackersBlockId : "";
-            this.defendersBlockId = defendersBlockId != null ? defendersBlockId : "";
-        }
-
-        public PrefabEntry(String prefabId, String attackersBlockId, String defendersBlockId,
-                          List<PositionEntry> attackersPositions, List<PositionEntry> defendersPositions) {
-            this.prefabId = prefabId != null ? prefabId : "";
-            this.attackersBlockId = attackersBlockId != null ? attackersBlockId : "";
-            this.defendersBlockId = defendersBlockId != null ? defendersBlockId : "";
             this.attackersPositions = attackersPositions != null ? new ArrayList<>(attackersPositions) : null;
             this.defendersPositions = defendersPositions != null ? new ArrayList<>(defendersPositions) : null;
         }
 
         public String getPrefabId() { return prefabId; }
-        public String getAttackersBlockId() { return attackersBlockId; }
-        public String getDefendersBlockId() { return defendersBlockId; }
 
-        /** Attackers spawn positions from config; empty if not specified (use block-ID fallback). */
+        /** Attackers spawn positions from config; empty if not specified (hardcoded fallback used). */
         @Nonnull
         public List<PositionEntry> getAttackersPositions() {
             return attackersPositions != null ? Collections.unmodifiableList(attackersPositions) : Collections.emptyList();
         }
 
-        /** Defenders spawn positions from config; empty if not specified (use block-ID fallback). */
+        /** Defenders spawn positions from config; empty if not specified (hardcoded fallback used). */
         @Nonnull
         public List<PositionEntry> getDefendersPositions() {
             return defendersPositions != null ? Collections.unmodifiableList(defendersPositions) : Collections.emptyList();
