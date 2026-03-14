@@ -13,7 +13,7 @@ Related docs: [prism_system.md](prism_system.md) (test prism /f prism), [prism_b
 - **Join window and combat:** A configurable **join timer** (`attackerTimeSeconds`, default 60 seconds) is the time during which players can join the attack or defense. When this timer reaches 0, the attack status becomes **in_progress** (combat starts) and no new players can join. The battle can end in three ways: (1) **Prism NPC killed** (attack prefab must include an NPC with role id `Prism_Attacked_NPC_Role`) → attackers win; (2) **All attackers killed** → defenders win; (3) **Time to auto-destroy** (`timeBeforeAutoDestruction`, default 600 seconds) reached → defenders win. When the battle ends, participants are teleported back and the attack world is removed.
 - **Persistence:** Attack sessions and participants are stored in the database (`prism_attacks`, `prism_attack_participants`) so the system survives restarts and supports pre-teleport checks and re-join flows.
 - **Event-driven:** The UI does **not** run join/teleport logic. It **dispatches** a `PlayerJoinPrismAttackEvent`. A single **PrismAttackEventHandler** runs all pre-teleport checks, assigns spawn, inserts the participant, then adds the **Teleport** component on the player’s current world (ECS-safe pattern).
-- **Entity damage (players and NPCs):** In the prism attack world, damage to players and NPCs is **only active when attack status is in_progress** (combat phase). When status is **preparing** (join window), damage to players and NPCs is **cancelled**. This is enforced by **PrismAttackEntityDamageProtectionSystem**, which runs in the damage filter phase and cancels the `Damage` event when the attack is not yet in progress.
+- **Entity damage (players and NPCs):** The prism attack world is created with **PVP enabled** at the world level. Actual damage to players and NPCs is **only applied when attack status is in_progress** (combat phase). When status is **preparing** (join window), damage to players and NPCs is **cancelled**. This is enforced by **PrismAttackEntityDamageProtectionSystem**, which runs in the damage filter phase and cancels the `Damage` event when the attack is not yet in progress.
 
 ---
 
@@ -52,7 +52,7 @@ The attack prefab **must** include an NPC with role id **Prism_Attacked_NPC_Role
 When the **prism NPC** is killed:
 
 - Attack status is set to **RESOLVED_ATTACKERS_WIN**.
-- **Participants with a saved return position are teleported back** to their previous world and coordinates (from `prism_attack_participants` return columns).
+- A **10-second countdown HUD** ("Teleporting back in X seconds") is shown to all participants in the attack world, then **participants with a saved return position are teleported back** to their previous world and coordinates (from `prism_attack_participants` return columns).
 - Points = prism’s time alive (minutes) × chunk multiplier; awarded to the **attacker faction** via **FactionPointsManager.awardPoints(attackerFactionId, "prismAttack", points)**.
 - Prism is removed from **PrismManager** and the block is set to air in the main world.
 - The attack world is removed (**Universe.removeWorld**) after a short delay so teleports are applied first.
@@ -63,7 +63,7 @@ When the **prism NPC** is killed:
 When **all attackers are killed** or the **destruction timer** expires:
 
 - Attack status is set to **RESOLVED_DEFENDERS_WIN**.
-- **Participants with a saved return position are teleported back** (same as attackers win).
+- A **10-second countdown HUD** ("Teleporting back in X seconds") is shown to all participants in the attack world, then **participants with a saved return position are teleported back** (same as attackers win).
 - The prism is **not** removed; no points are awarded to attackers.
 - The attack world is removed and the attack is removed from the in-memory cache.
 
@@ -113,6 +113,10 @@ When **all attackers are killed** or the **destruction timer** expires:
 Unique on `(attack_id, player_uuid)`.
 
 Indexes: `idx_prism_attacks_prism_id`, `idx_prism_attacks_status`, `idx_prism_attack_participants_attack_id`.
+
+### Leaderboard (faction points)
+
+Leaderboard points shown in the faction UI come from the **`faction_points`** table (faction_id, points). Points are awarded when attackers win a prism attack (and for harvest, etc.). **FactionPointsManager** loads from `faction_points` on startup, persists each award via **DatabaseManager.saveFactionPoints**, and flushes all in-memory points to the DB on plugin shutdown so the leaderboard survives server restarts.
 
 ---
 
@@ -215,12 +219,14 @@ On plugin load, **PrismAttackService.initializeAsync()**:
 
 ## HUD (MultipleHUD mod)
 
-When the **MultipleHUD** mod is present, all players in an **ACTIVE** prism attack (in the attack world) see a countdown HUD: **"XX seconds before the attack starts"** (key **ui.prism_attack.timer_seconds**). The HUD is updated every second by **PrismAttackHudTicker**. When the join timer reaches 0 (status becomes **in_progress**), **PrismAttackHudHelper.clearHudForAttack** removes the HUD for that attack’s participants. The plugin runs without the mod; the HUD is simply not shown if MultipleHUD is not loaded.
+When the **MultipleHUD** mod is present, all players in an **ACTIVE** prism attack (in the attack world) see a countdown HUD: **"XX seconds before the attack starts"** (key **ui.prism_attack.timer_seconds**). The HUD is updated every second by **PrismAttackHudTicker**. When the join timer reaches 0 (status becomes **in_progress**), **PrismAttackHudHelper.clearHudForAttack** removes the HUD for that attack’s participants, then **PrismAttackHudHelper.showCombatStartsMessage** shows a one-off title (e.g. "Combat starts" / "Le combat commence", key **ui.prism_attack.combat_starts**) and plays a UI sound to all participants in the attack world. The plugin runs without the mod; the HUD is simply not shown if MultipleHUD is not loaded.
 
 ## I18n keys
 
 - **ui.faction_prisms.multiplier**: Multiplier label in the prism list row (e.g. "Multiplier: {0}").
 - **ui.prism_attack.timer_seconds**: HUD countdown text (e.g. "{0} seconds before the attack starts"). Parameter: remaining seconds.
+- **ui.prism_attack.combat_starts**: Title shown when the join timer reaches 0 (e.g. "Combat starts" / "Le combat commence"). No parameters. A sound is also played to participants.
+- **ui.prism_attack.teleport_back_seconds**: HUD text shown when a winning condition is met (e.g. "Teleporting back in {0} seconds"). Parameter: seconds until teleport.
 - **ui.prism_attack.***: Error messages used by PrismAttackEventHandlerImpl when a pre-teleport check fails (e.g. no_prism, attack_not_found, must_be_in_faction, defender_must_be_faction_or_ally, world_not_found, no_slot_or_already_joined, etc.). Defined in `lang/en.json` and `lang/fr.json`.
 
 ---

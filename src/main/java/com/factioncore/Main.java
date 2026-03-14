@@ -892,15 +892,23 @@ public class Main extends JavaPlugin {
                     if (attack != null && playerRef != null) {
                         // In PREPARING attack world: show countdown HUD (after ClientReady).
                         // Run on world thread so HUD manager is in correct context (same as MultipleHUD test).
+                        // Do not capture Player; validate ref inside lambda to avoid "Incorrect store for entity reference".
                         getLogger().at(Level.INFO).log("[FactionCore] Scheduling prism attack HUD for player %s in world %s", playerRef.getUuid(), worldName);
-                        currentWorld.execute(() -> com.factioncore.prism.PrismAttackHudHelper.showHudForPlayerIfInActiveAttack(playerRef, player, attack));
+                        currentWorld.execute(() -> {
+                            com.hypixel.hytale.component.Ref<EntityStore> entityRef = playerRef.getReference();
+                            if (entityRef == null || !entityRef.isValid()) return;
+                            com.factioncore.prism.PrismAttackHudHelper.showHudForPlayerIfInActiveAttack(playerRef, attack);
+                        });
                     } else if (attack == null) {
                         // In prism-attack world but no PREPARING attack (cancelled): teleport to default world spawn
                         World defaultWorld = getDefaultWorldForRescue();
                         if (defaultWorld != null) {
                             java.util.UUID playerUuid = playerRef != null ? playerRef.getUuid() : null;
                             com.hypixel.hytale.math.vector.Transform spawnTransform = getDefaultSpawnTransform(defaultWorld, playerUuid);
-                            currentWorld.execute(() -> store.addComponent(ref, com.hypixel.hytale.server.core.modules.entity.teleport.Teleport.getComponentType(), com.hypixel.hytale.server.core.modules.entity.teleport.Teleport.createForPlayer(defaultWorld, spawnTransform)));
+                            currentWorld.execute(() -> {
+                                if (!ref.isValid()) return;
+                                store.addComponent(ref, com.hypixel.hytale.server.core.modules.entity.teleport.Teleport.getComponentType(), com.hypixel.hytale.server.core.modules.entity.teleport.Teleport.createForPlayer(defaultWorld, spawnTransform));
+                            });
                         }
                     }
                 } catch (Exception e) {

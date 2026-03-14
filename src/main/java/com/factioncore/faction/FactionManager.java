@@ -1584,6 +1584,13 @@ public class FactionManager {
             }
         }
         
+        // Always persist faction leaderboard points so they survive restarts
+        try {
+            com.factioncore.points.FactionPointsManager.getInstance().saveAllToDatabase();
+        } catch (Exception e) {
+            getLogger().at(Level.SEVERE).log("Failed to save faction points on shutdown: " + e.getMessage());
+        }
+        
         // Shutdown database manager
         databaseManager.shutdown();
     }

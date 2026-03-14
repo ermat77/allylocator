@@ -11,6 +11,7 @@ import com.hypixel.hytale.math.util.ChunkUtil;
 import com.hypixel.hytale.math.vector.Transform;
 import com.hypixel.hytale.math.vector.Vector2d;
 import com.hypixel.hytale.math.vector.Vector3i;
+import com.hypixel.hytale.component.ComponentType;
 import com.hypixel.hytale.server.core.modules.entity.teleport.Teleport;
 import com.hypixel.hytale.server.core.prefab.PrefabStore;
 import com.hypixel.hytale.server.core.prefab.selection.standard.BlockSelection;
@@ -26,6 +27,7 @@ import com.hypixel.hytale.server.core.universe.world.storage.EntityStore;
 
 import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import java.lang.reflect.Method;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.*;
@@ -59,6 +61,24 @@ public final class PrismAttackService {
         t.setDaemon(true);
         return t;
     });
+
+    @Nullable
+    private static final ComponentType<EntityStore, ?> INTERACTION_MANAGER_COMPONENT_TYPE = resolveInteractionManagerComponentType();
+
+    @Nullable
+    private static ComponentType<EntityStore, ?> resolveInteractionManagerComponentType() {
+        try {
+            Class<?> c = Class.forName("com.hypixel.hytale.server.core.entity.InteractionManager");
+            Method m = c.getMethod("getComponentType");
+            Object ct = m.invoke(null);
+            @SuppressWarnings("unchecked")
+            ComponentType<EntityStore, ?> type = (ComponentType<EntityStore, ?>) ct;
+            return type;
+        } catch (Exception e) {
+            ConfigUtil.debug("[PrismAttackService] InteractionManager component type not available: " + e.getMessage());
+            return null;
+        }
+    }
 
     private volatile CompletableFuture<Void> initializationFuture;
 
@@ -170,12 +190,17 @@ public final class PrismAttackService {
         prismIdToAttack.put(updated.getPrismId(), updated);
         attackIdToRecord.put(attackId, updated);
         PrismAttackHudHelper.clearHudForAttack(attackId);
+        World attackWorld = Universe.get().getWorld(updated.getAttackWorldName());
+        if (attackWorld != null) {
+            attackWorld.execute(() -> PrismAttackHudHelper.showCombatStartsMessage(attackWorld, participants));
+        }
     }
 
     /**
      * Resolves attack as attackers win: teleport participants back, award FP, remove prism, remove attack world, update DB.
      */
     public void resolveAttackAttackersWin(@Nonnull UUID attackId) {
+        log(Level.INFO, "[PrismAttackService] resolveAttackAttackersWin entered attackId=%s", attackId);
         PrismAttackRecord attack = attackIdToRecord.get(attackId);
         if (attack == null) return;
         removeAttackFromCache(attackId);
@@ -201,7 +226,10 @@ public final class PrismAttackService {
         }
         FactionManager.getInstance().getDatabaseManager()
                 .loadPrismAttackParticipantsForAttacksAsync(Collections.singletonList(attackId))
-                .thenAccept(participants -> teleportParticipantsBackAndRemoveWorld(attackWorld, attackId, attackWorldName, participants))
+                .thenAccept(participants -> {
+                    log(Level.INFO, "[PrismAttackService] resolveAttackAttackersWin loading participants done, calling scheduleTeleportBackWithCountdown attackId=%s participants=%d", attackId, participants != null ? participants.size() : 0);
+                    scheduleTeleportBackWithCountdown(attackWorld, attackId, attackWorldName, participants);
+                })
                 .exceptionally(throwable -> {
                     ConfigUtil.debug("[PrismAttackService] load participants for teleport-back failed: " + throwable.getMessage());
                     try {
@@ -218,6 +246,7 @@ public final class PrismAttackService {
      * Does not remove the prism or award points to attackers.
      */
     public void resolveAttackDefendersWin(@Nonnull UUID attackId) {
+        log(Level.INFO, "[PrismAttackService] resolveAttackDefendersWin entered attackId=%s", attackId);
         PrismAttackRecord attack = attackIdToRecord.get(attackId);
         if (attack == null) return;
         removeAttackFromCache(attackId);
@@ -230,7 +259,10 @@ public final class PrismAttackService {
         }
         FactionManager.getInstance().getDatabaseManager()
                 .loadPrismAttackParticipantsForAttacksAsync(Collections.singletonList(attackId))
-                .thenAccept(participants -> teleportParticipantsBackAndRemoveWorld(attackWorld, attackId, attackWorldName, participants))
+                .thenAccept(participants -> {
+                    log(Level.INFO, "[PrismAttackService] resolveAttackDefendersWin loading participants done, calling scheduleTeleportBackWithCountdown attackId=%s participants=%d", attackId, participants != null ? participants.size() : 0);
+                    scheduleTeleportBackWithCountdown(attackWorld, attackId, attackWorldName, participants);
+                })
                 .exceptionally(throwable -> {
                     ConfigUtil.debug("[PrismAttackService] load participants for teleport-back failed: " + throwable.getMessage());
                     try {
@@ -243,29 +275,74 @@ public final class PrismAttackService {
     }
 
     /**
+     * Schedules a 10-second countdown HUD ("Teleporting back in X seconds") then teleports participants back.
+     * If the attack world is no longer present when a task runs, the task is skipped.
+     */
+    private void scheduleTeleportBackWithCountdown(@Nonnull World attackWorld, @Nonnull UUID attackId,
+                                                  @Nonnull String attackWorldName,
+                                                  @Nonnull List<PrismAttackParticipantRecord> participants) {
+        log(Level.INFO, "[PrismAttackService] scheduleTeleportBackWithCountdown entered attackId=%s attackWorldName=%s participants=%d", attackId, attackWorldName, participants != null ? participants.size() : 0);
+        for (int s = 10; s >= 1; s--) {
+            final int secondsRemaining = s;
+            long delaySec = 10 - s;
+            timerScheduler.schedule(() -> {
+                if (Universe.get().getWorld(attackWorldName) != attackWorld) {
+                    log(Level.FINE, "[PrismAttackService] teleport countdown skipped (world no longer present) attackId=%s", attackId);
+                    return;
+                }
+                attackWorld.execute(() -> PrismAttackHudHelper.showTeleportBackCountdown(attackWorld, participants, secondsRemaining));
+            }, delaySec, TimeUnit.SECONDS);
+        }
+        timerScheduler.schedule(() -> {
+            log(Level.INFO, "[PrismAttackService] scheduleTeleportBackWithCountdown 10s elapsed, calling teleportParticipantsBackAndRemoveWorld attackId=%s", attackId);
+            if (Universe.get().getWorld(attackWorldName) != attackWorld) {
+                log(Level.FINE, "[PrismAttackService] teleport-back skipped (world no longer present) attackId=%s", attackId);
+                return;
+            }
+            teleportParticipantsBackAndRemoveWorld(attackWorld, attackId, attackWorldName, participants);
+        }, 10, TimeUnit.SECONDS);
+    }
+
+    /**
      * Teleports all participants with a return position back to their world, then schedules attack world removal.
      * Shared by resolveAttackAttackersWin and resolveAttackDefendersWin.
      */
     private void teleportParticipantsBackAndRemoveWorld(@Nonnull World attackWorld, @Nonnull UUID attackId,
                                                         @Nonnull String attackWorldName,
                                                         @Nonnull List<PrismAttackParticipantRecord> participants) {
+        log(Level.INFO, "[PrismAttackService] teleportParticipantsBackAndRemoveWorld entered attackId=%s attackWorldName=%s participants=%d", attackId, attackWorldName, participants != null ? participants.size() : 0);
         for (PrismAttackParticipantRecord p : participants) {
             if (p.getReturnWorldName() == null || p.getReturnWorldName().isEmpty()) continue;
             World returnWorld = Universe.get().getWorld(p.getReturnWorldName());
             if (returnWorld == null) continue;
             Transform returnTransform = new Transform(p.getReturnX(), p.getReturnY(), p.getReturnZ());
             UUID playerUuid = p.getPlayerUuid();
+            final String returnWorldName = p.getReturnWorldName();
             attackWorld.execute(() -> {
+                log(Level.INFO, "[PrismAttackService] teleportParticipantsBackAndRemoveWorld execute started playerUuid=%s returnWorld=%s", playerUuid, returnWorldName);
                 java.util.Collection<PlayerRef> refs = attackWorld.getPlayerRefs();
-                if (refs == null) return;
+                if (refs == null) {
+                    log(Level.INFO, "[PrismAttackService] teleportParticipantsBackAndRemoveWorld getPlayerRefs=null");
+                    return;
+                }
                 for (PlayerRef pr : refs) {
                     if (pr != null && playerUuid.equals(pr.getUuid())) {
                         Ref<EntityStore> ref = pr.getReference();
                         if (ref != null && ref.isValid()) {
                             Store<EntityStore> store = attackWorld.getEntityStore().getStore();
                             if (store != null) {
+                                // Remove interaction state so no Ref from this world is used in the target world (avoids "Incorrect store for entity reference").
+                                if (INTERACTION_MANAGER_COMPONENT_TYPE != null) {
+                                    try {
+                                        store.removeComponent(ref, INTERACTION_MANAGER_COMPONENT_TYPE);
+                                    } catch (Exception e) {
+                                        ConfigUtil.debug("[PrismAttackService] Could not remove InteractionManager before teleport: " + e.getMessage());
+                                    }
+                                }
+                                log(Level.INFO, "[PrismAttackService] teleportParticipantsBackAndRemoveWorld adding Teleport for playerUuid=%s", playerUuid);
                                 Teleport teleport = Teleport.createForPlayer(returnWorld, returnTransform);
                                 store.addComponent(ref, Teleport.getComponentType(), teleport);
+                                log(Level.INFO, "[PrismAttackService] teleportParticipantsBackAndRemoveWorld added Teleport for playerUuid=%s", playerUuid);
                             }
                         }
                         break;
@@ -273,8 +350,10 @@ public final class PrismAttackService {
                 }
             });
         }
+        log(Level.INFO, "[PrismAttackService] teleportParticipantsBackAndRemoveWorld scheduled removeWorld in 1s attackWorldName=%s", attackWorldName);
         timerScheduler.schedule(() -> {
             try {
+                log(Level.INFO, "[PrismAttackService] teleportParticipantsBackAndRemoveWorld removeWorld running attackWorldName=%s", attackWorldName);
                 Universe.get().removeWorld(attackWorldName);
             } catch (Exception e) {
                 ConfigUtil.debug("[PrismAttackService] removeWorld failed: " + e.getMessage());
@@ -675,6 +754,7 @@ public final class PrismAttackService {
         config.setDisplayName("Prism Attack");
         config.setSeed(System.currentTimeMillis());
         config.setDeleteOnRemove(true);
+        config.setPvpEnabled(true); // World PVP on; PrismAttackEntityDamageProtectionSystem gates damage to in_progress only
         com.hypixel.hytale.codec.builder.BuilderCodec<?> flatCodec = (com.hypixel.hytale.codec.builder.BuilderCodec<?>) IWorldGenProvider.CODEC.getCodecFor("Flat");
         if (flatCodec != null) {
             config.setWorldGenProvider((IWorldGenProvider) flatCodec.getDefaultValue());

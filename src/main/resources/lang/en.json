@@ -253,6 +253,8 @@
   "ui.prism_attack.no_slot_or_already_joined": "No free slot or you already joined this attack.",
   "ui.prism_attack.current_world_null": "Could not determine your current world.",
   "ui.prism_attack.timer_seconds": "{0} seconds before the attack starts",
+  "ui.prism_attack.teleport_back_seconds": "Teleporting back in {0} seconds",
+  "ui.prism_attack.combat_starts": "Combat starts",
 
   "ui.diplomacy.title": "Diplomacy",
   "ui.diplomacy.enemies": "Enemies:",

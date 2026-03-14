@@ -248,7 +248,9 @@
   "ui.prism_attack.world_not_found": "Monde d'attaque introuvable.",
   "ui.prism_attack.no_slot_or_already_joined": "Aucune place libre ou vous avez déjà rejoint cette attaque.",
   "ui.prism_attack.current_world_null": "Impossible de déterminer votre monde actuel.",
-  "ui.prism_attack.timer_seconds": "{0} secondes avant le début de l'attaque",
+  "ui.prism_attack.timer_seconds": "{0} seconde(s) avant le début de l''attaque",
+  "ui.prism_attack.teleport_back_seconds": "Téléportation dans {0} seconde(s)",
+  "ui.prism_attack.combat_starts": "Le combat commence",
 
   "ui.diplomacy.title": "Diplomatie",
   "ui.diplomacy.enemies": "Ennemis :",
@@ -268,7 +270,7 @@
   "ui.settings.rename_button": "RENOMMER",
   "ui.settings.color_label": "Couleur de la faction :",
   "ui.settings.back": "RETOUR",
-  "ui.settings.disband": "DISSoudre",
+  "ui.settings.disband": "Dissoudre",
   "ui.settings.close": "FERMER",
 
   "ui.ally_settings.title": "Paramètres alliés",

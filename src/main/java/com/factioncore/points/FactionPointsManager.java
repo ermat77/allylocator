@@ -98,4 +98,15 @@ public final class FactionPointsManager {
         list.sort(Comparator.<Map.Entry<UUID, Integer>>comparingInt(Map.Entry::getValue).reversed());
         return list;
     }
+
+    /**
+     * Persists all in-memory faction points to the database (e.g. on plugin shutdown).
+     * Call before database manager shutdown to ensure leaderboard state survives restarts.
+     */
+    public void saveAllToDatabase() {
+        ensureLoaded();
+        for (Map.Entry<UUID, Integer> entry : factionPoints.entrySet()) {
+            FactionManager.getInstance().getDatabaseManager().saveFactionPoints(entry.getKey(), entry.getValue());
+        }
+    }
 }
